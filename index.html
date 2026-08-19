@@ -184,12 +184,17 @@
 
       function renderExam() {
         const bundle = state.attemptBundle || {};
-        const subjects = bundle.subjects || [];
+        const subjects = (bundle.subjects && bundle.subjects.length) ? bundle.subjects : [{ examSubjectId: 'default_subject', subjectName: 'Main Paper' }];
         const questions = getOrderedQuestions(bundle);
-        const activeSubject = subjects.find((item) => String(item.examSubjectId) === String(state.activeSubjectId)) || subjects[0];
-        const subjectQuestions = questions.filter((item) => String(item.examSubjectId) === String(activeSubject && activeSubject.examSubjectId));
-        const activeQuestion = subjectQuestions.find((item) => String(item.questionId) === String(state.activeQuestionId)) || subjectQuestions[0];
-        const answeredMap = state.answers;
+        const activeSubject = subjects.find((item) => String(item.examSubjectId || '').trim() === String(state.activeSubjectId || '').trim()) || subjects[0];
+        
+        let subjectQuestions = questions.filter((item) => String(item.examSubjectId || '').trim() === String(activeSubject && activeSubject.examSubjectId || '').trim());
+        if (!subjectQuestions.length && questions.length > 0) {
+          subjectQuestions = questions;
+        }
+
+        const activeQuestion = subjectQuestions.find((item) => String(item.questionId || '').trim() === String(state.activeQuestionId || '').trim()) || subjectQuestions[0] || questions[0];
+        const answeredMap = state.answers || {};
         const remainingText = getRemainingTimeText(bundle.attempt && bundle.attempt.expiresAt);
 
         return `
@@ -210,20 +215,20 @@
               <div class="stack">
                 <h3 style="margin:0;">Question Navigator</h3>
                 <div class="subject-tabs">
-                  ${subjects.map((subject) => `<button class="subject-tab ${String(subject.examSubjectId) === String(state.activeSubjectId) ? 'active' : ''}" onclick="setSubject('${subject.examSubjectId}')">${escapeHtml(subject.subjectName)}</button>`).join('')}
+                  ${subjects.map((subject) => `<button class="subject-tab ${String(subject.examSubjectId || '').trim() === String(activeSubject && activeSubject.examSubjectId || '').trim() ? 'active' : ''}" onclick="setSubject('${escapeAttribute(subject.examSubjectId)}')">${escapeHtml(subject.subjectName)}</button>`).join('')}
                 </div>
                 <div class="question-grid">
                   ${subjectQuestions.map((question) => {
                     const value = answeredMap[question.questionId];
                     const answered = Array.isArray(value) ? value.length > 0 : value !== undefined && value !== null && value !== '';
-                    return `<button class="qchip ${answered ? 'answered' : ''} ${String(question.questionId) === String(state.activeQuestionId) ? 'active' : ''}" onclick="setQuestion('${question.questionId}')">${escapeHtml(question.questionNumber)}</button>`;
+                    return `<button class="qchip ${answered ? 'answered' : ''} ${String(question.questionId || '').trim() === String(activeQuestion && activeQuestion.questionId || '').trim() ? 'active' : ''}" onclick="setQuestion('${escapeAttribute(question.questionId)}')">${escapeHtml(question.questionNumber)}</button>`;
                   }).join('')}
                 </div>
-                <div class="status">Answers auto-saved to cloud.</div>
+                <div class="status">Total Questions: <strong>${questions.length}</strong></div>
               </div>
             </div>
             <div class="panel">
-              ${activeQuestion ? renderQuestion(activeQuestion) : '<div class="empty">No question selected.</div>'}
+              ${activeQuestion ? renderQuestion(activeQuestion) : '<div class="empty">No question found for this paper.</div>'}
             </div>
           </div>
         `;
@@ -393,9 +398,11 @@
       }
 
       function setSubject(subjectId) {
-        const firstQuestion = getOrderedQuestions(state.attemptBundle).find((item) => String(item.examSubjectId) === String(subjectId));
         state.activeSubjectId = subjectId;
-        state.activeQuestionId = firstQuestion && firstQuestion.questionId;
+        const allQuestions = getOrderedQuestions(state.attemptBundle);
+        const subQuestions = allQuestions.filter((item) => String(item.examSubjectId || '').trim() === String(subjectId || '').trim());
+        const targetQ = subQuestions[0] || allQuestions[0];
+        state.activeQuestionId = targetQ ? targetQ.questionId : null;
         render();
       }
 
@@ -408,8 +415,11 @@
       function goNextQuestion() { moveQuestion(1); }
 
       function moveQuestion(step) {
-        const questions = getOrderedQuestions(state.attemptBundle).filter((item) => String(item.examSubjectId) === String(state.activeSubjectId));
-        const index = questions.findIndex((item) => String(item.questionId) === String(state.activeQuestionId));
+        const allQuestions = getOrderedQuestions(state.attemptBundle);
+        let questions = allQuestions.filter((item) => String(item.examSubjectId || '').trim() === String(state.activeSubjectId || '').trim());
+        if (!questions.length) questions = allQuestions;
+
+        const index = questions.findIndex((item) => String(item.questionId || '').trim() === String(state.activeQuestionId || '').trim());
         const next = questions[index + step];
         if (next) {
           state.activeQuestionId = next.questionId;
@@ -578,14 +588,17 @@
         (bundle.answers || []).forEach((answer) => {
           answers[answer.questionId] = parseJson(answer.answerJson, '');
         });
-        const firstSubject = (bundle.subjects || [])[0];
-        const firstQuestion = getOrderedQuestions(bundle).find((item) => String(item.examSubjectId) === String(firstSubject && firstSubject.examSubjectId));
+        const allQuestions = getOrderedQuestions(bundle);
+        const firstSubject = (bundle.subjects || [])[0] || { examSubjectId: 'default_subject' };
+        const subQuestions = allQuestions.filter((item) => String(item.examSubjectId || '').trim() === String(firstSubject.examSubjectId || '').trim());
+        const firstQuestion = subQuestions[0] || allQuestions[0];
+        
         setState({
           activeExam: bundle.exam,
           attemptBundle: bundle,
           answers,
-          activeSubjectId: firstSubject && firstSubject.examSubjectId,
-          activeQuestionId: firstQuestion && firstQuestion.questionId,
+          activeSubjectId: firstSubject.examSubjectId,
+          activeQuestionId: firstQuestion ? firstQuestion.questionId : null,
           view: 'exam',
           isSubmitting: false,
           error: ''

@@ -321,6 +321,48 @@
       // ==========================================
       // SECTION WIZARD & QUESTION/OPTIONS EDITOR
       // ==========================================
+      function getStandardPatternSubSections() {
+        return [
+          { name: 'Section 1: Single Correct', type: 'SINGLE_CORRECT', count: 10, fullMarks: 1, partialMarks: 0, wrongMarks: 0 },
+          { name: 'Section 2: Multiple Correct', type: 'MULTI_CORRECT', count: 5, fullMarks: 2, partialMarks: 1, wrongMarks: 0 },
+          { name: 'Section 3: Numerical / Integer', type: 'INTEGER', count: 5, fullMarks: 1, partialMarks: 0, wrongMarks: 0 }
+        ];
+      }
+
+      function getStandardSubjectList(preset) {
+        let names = ['Mathematics', 'Physics / Chemistry', 'Biology'];
+        if (preset === 'PCM') names = ['Mathematics', 'Physics', 'Chemistry'];
+        else if (preset === 'PCB') names = ['Physics', 'Chemistry', 'Biology'];
+        else if (preset === 'PCMB') names = ['Mathematics', 'Physics', 'Chemistry', 'Biology'];
+        else if (preset === 'MATHS_PHY_CHEM_BIO') names = ['Mathematics', 'Physics / Chemistry', 'Biology'];
+        
+        return names.map((name, i) => ({
+          examSubjectId: 'sub_' + name.toLowerCase().replace(/[^a-z0-9]/g, '_') + '_' + (i + 1),
+          subjectName: name,
+          subSections: getStandardPatternSubSections(),
+          questions: []
+        }));
+      }
+
+      function applyExamPreset(presetType) {
+        if (adminState.editingExam) {
+          const existingQuestions = {};
+          (adminState.editingExam.subjects || []).forEach(s => {
+            if (s.questions && s.questions.length) {
+              existingQuestions[s.subjectName.toLowerCase()] = s.questions;
+            }
+          });
+          const newSubjects = getStandardSubjectList(presetType);
+          newSubjects.forEach(s => {
+            const match = existingQuestions[s.subjectName.toLowerCase()];
+            if (match) s.questions = match;
+          });
+          adminState.editingExam.subjects = newSubjects;
+          persistDraftToStorage();
+          renderWizardModal();
+        }
+      }
+
       function openCreateExamWizard() {
         const today = new Date().toISOString().split('T')[0];
         const defaultClass = adminState.classes && adminState.classes.length ? adminState.classes[0].className : 'ALL';
@@ -337,38 +379,7 @@
           resultMode: 'IMMEDIATE',
           status: 'PUBLISHED',
           assignedStudentIds: [],
-          subjects: [
-            {
-              examSubjectId: 'sub_maths',
-              subjectName: 'Mathematics',
-              subSections: [
-                { name: 'Section 1: Single Correct MCQs', type: 'SINGLE_CORRECT', count: 10, fullMarks: 4, partialMarks: 0, wrongMarks: -1 },
-                { name: 'Section 2: Multi-Correct (Partial Marking)', type: 'MULTI_CORRECT', count: 5, fullMarks: 4, partialMarks: 1, wrongMarks: -2 },
-                { name: 'Section 3: Numerical Value', type: 'INTEGER', count: 5, fullMarks: 4, partialMarks: 0, wrongMarks: 0 }
-              ],
-              questions: []
-            },
-            {
-              examSubjectId: 'sub_physics',
-              subjectName: 'Physics',
-              subSections: [
-                { name: 'Section 1: Single Correct MCQs', type: 'SINGLE_CORRECT', count: 10, fullMarks: 4, partialMarks: 0, wrongMarks: -1 },
-                { name: 'Section 2: Multi-Correct (Partial Marking)', type: 'MULTI_CORRECT', count: 5, fullMarks: 4, partialMarks: 1, wrongMarks: -2 },
-                { name: 'Section 3: Numerical Value', type: 'INTEGER', count: 5, fullMarks: 4, partialMarks: 0, wrongMarks: 0 }
-              ],
-              questions: []
-            },
-            {
-              examSubjectId: 'sub_chem',
-              subjectName: 'Chemistry',
-              subSections: [
-                { name: 'Section 1: Single Correct MCQs', type: 'SINGLE_CORRECT', count: 10, fullMarks: 4, partialMarks: 0, wrongMarks: -1 },
-                { name: 'Section 2: Multi-Correct (Partial Marking)', type: 'MULTI_CORRECT', count: 5, fullMarks: 4, partialMarks: 1, wrongMarks: -2 },
-                { name: 'Section 3: Numerical Value', type: 'INTEGER', count: 5, fullMarks: 4, partialMarks: 0, wrongMarks: 0 }
-              ],
-              questions: []
-            }
-          ]
+          subjects: getStandardSubjectList('MATHS_PHY_CHEM_BIO')
         };
         adminState.activeSubjectIndex = 0;
         adminState.activeSubSecIndex = 0;
@@ -411,13 +422,39 @@
           <div class="modal-content">
             <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:14px; margin-bottom:18px;">
               <div>
-                <span class="badge" style="background:#5ec8ff; color:#03111d; font-weight:bold;">Step 1: Exam Structure & Target Class</span>
-                <h2 style="margin:6px 0 0; font-size:1.35rem;">Define Blueprint & Assign Class</h2>
+                <span class="badge" style="background:#5ec8ff; color:#03111d; font-weight:bold;">Step 1: Exam Structure & Blueprint</span>
+                <h2 style="margin:6px 0 0; font-size:1.35rem;">Standard Exam Blueprint & Target Class</h2>
               </div>
               <div class="row">
                 <span class="draft-badge" id="draft-indicator">💾 Auto-saved locally ✓</span>
                 <button type="button" class="btn btn-danger" style="padding:6px 12px; font-size:0.8rem;" onclick="discardDraft()">Discard Draft</button>
                 <button type="button" class="btn btn-secondary" onclick="closeWizardModal()">Close</button>
+              </div>
+            </div>
+
+            <!-- Standard Pattern Quick Presets -->
+            <div class="panel" style="background:rgba(94,200,255,0.06); border:1px solid rgba(94,200,255,0.25); padding:12px 16px; margin-bottom:16px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                <div>
+                  <span class="badge" style="background:#5ec8ff; color:#03111d; font-weight:bold;">⚡ Standard Pattern Presets</span>
+                  <p style="margin:4px 0 0; font-size:0.85rem; color:#d1e2f6;">
+                    3 Sections per Subject: <strong>10 Single Correct (+1, 0)</strong> · <strong>5 Multi-Correct (+2, Partial +1, 0)</strong> · <strong>5 Integers (+1, 0)</strong>
+                  </p>
+                </div>
+                <div class="row" style="gap:8px; flex-wrap:wrap;">
+                  <button type="button" class="btn btn-primary" style="font-size:0.8rem; padding:6px 12px;" onclick="applyExamPreset('MATHS_PHY_CHEM_BIO')">
+                    🎯 Default: Maths, Phy/Chem, Bio
+                  </button>
+                  <button type="button" class="btn btn-secondary" style="font-size:0.8rem; padding:6px 12px;" onclick="applyExamPreset('PCM')">
+                    🧪 PCM (Maths, Physics, Chem)
+                  </button>
+                  <button type="button" class="btn btn-secondary" style="font-size:0.8rem; padding:6px 12px;" onclick="applyExamPreset('PCB')">
+                    🧬 PCB (Physics, Chem, Bio)
+                  </button>
+                  <button type="button" class="btn btn-secondary" style="font-size:0.8rem; padding:6px 12px;" onclick="applyExamPreset('PCMB')">
+                    📚 PCMB (4 Subjects)
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -442,7 +479,7 @@
             <div class="stack">
               <div style="display:flex; justify-content:space-between; align-items:center;">
                 <label style="font-weight:600; font-size:0.95rem; color:#5ec8ff;">MAIN SUBJECTS (${exam.subjects.length}):</label>
-                <button type="button" class="btn btn-secondary" style="font-size:0.8rem; padding:4px 10px;" onclick="addSubjectToWizard()">+ Add Subject (e.g. Maths, Physics, Chemistry)</button>
+                <button type="button" class="btn btn-secondary" style="font-size:0.8rem; padding:4px 10px;" onclick="addSubjectToWizard()">+ Add Subject</button>
               </div>
 
               ${exam.subjects.map((sub, sIdx) => `
@@ -480,15 +517,15 @@
                           </div>
                           <div>
                             <label style="font-size:0.75rem; color:#8ea0bf;">+ Full</label>
-                            <input type="number" class="input" value="${sec.fullMarks !== undefined ? sec.fullMarks : 4}" oninput="updateSubSec(${sIdx}, ${secIdx}, 'fullMarks', Number(this.value))" />
+                            <input type="number" class="input" value="${sec.fullMarks !== undefined ? sec.fullMarks : 1}" oninput="updateSubSec(${sIdx}, ${secIdx}, 'fullMarks', Number(this.value))" />
                           </div>
                           <div>
                             <label style="font-size:0.75rem; color:#8ea0bf;">+ Partial</label>
-                            <input type="number" class="input" value="${sec.partialMarks !== undefined ? sec.partialMarks : 1}" oninput="updateSubSec(${sIdx}, ${secIdx}, 'partialMarks', Number(this.value))" />
+                            <input type="number" class="input" value="${sec.partialMarks !== undefined ? sec.partialMarks : 0}" oninput="updateSubSec(${sIdx}, ${secIdx}, 'partialMarks', Number(this.value))" />
                           </div>
                           <div>
                             <label style="font-size:0.75rem; color:#8ea0bf;">- Penalty</label>
-                            <input type="number" class="input" value="${sec.wrongMarks !== undefined ? sec.wrongMarks : -1}" oninput="updateSubSec(${sIdx}, ${secIdx}, 'wrongMarks', Number(this.value))" />
+                            <input type="number" class="input" value="${sec.wrongMarks !== undefined ? sec.wrongMarks : 0}" oninput="updateSubSec(${sIdx}, ${secIdx}, 'wrongMarks', Number(this.value))" />
                           </div>
                           <div style="padding-top:16px;">
                             ${(sub.subSections || []).length > 1 ? `<button type="button" class="btn btn-danger" style="padding:4px 8px; font-size:0.8rem;" onclick="removeSubSection(${sIdx}, ${secIdx})">×</button>` : ''}
@@ -535,7 +572,7 @@
         adminState.editingExam.subjects.push({
           examSubjectId: 'sub_' + Date.now(),
           subjectName: 'New Subject',
-          subSections: [{ name: 'Section 1: Single Correct', type: 'SINGLE_CORRECT', count: 10, fullMarks: 4, partialMarks: 0, wrongMarks: -1 }],
+          subSections: getStandardPatternSubSections(),
           questions: []
         });
         persistDraftToStorage();
@@ -550,7 +587,7 @@
         const sub = adminState.editingExam.subjects[sIdx];
         if (!sub.subSections) sub.subSections = [];
         const nextNum = sub.subSections.length + 1;
-        sub.subSections.push({ name: `Section ${nextNum}`, type: 'SINGLE_CORRECT', count: 5, fullMarks: 4, partialMarks: 1, wrongMarks: -1 });
+        sub.subSections.push({ name: `Section ${nextNum}`, type: 'SINGLE_CORRECT', count: 5, fullMarks: 1, partialMarks: 0, wrongMarks: 0 });
         persistDraftToStorage();
         renderWizardModal();
       }
@@ -980,9 +1017,9 @@
             <label style="font-size:0.85rem; font-weight:600; color:#7bffcf;">Expected Columns for Whole Subject Sheet (Tab-separated or Comma-separated):</label>
             <div class="bulk-sample-box">
               SubSection Name | Question Type | Question Text | Option A | Option B | Option C | Option D | Correct Answer | Full Marks | Wrong Marks | Optional Image URL<br/><br/>
-              <strong>Example 1:</strong> Section 1 | SINGLE_CORRECT | Which element has atomic number 1? | Hydrogen | Helium | Lithium | Carbon | A | 4 | -1 | <br/>
-              <strong>Example 2:</strong> Section 2 | MULTI_CORRECT | Which of the following are noble gases? | Helium | Neon | Chlorine | Argon | ABD | 4 | -2 | <br/>
-              <strong>Example 3:</strong> Section 3 | INTEGER | What is the square of 12? | | | | | 144 | 4 | 0 | 
+              <strong>Example 1:</strong> Section 1 | SINGLE_CORRECT | Which element has atomic number 1? | Hydrogen | Helium | Lithium | Carbon | A | 1 | 0 | <br/>
+              <strong>Example 2:</strong> Section 2 | MULTI_CORRECT | Which of the following are noble gases? | Helium | Neon | Chlorine | Argon | ABD | 2 | 0 | <br/>
+              <strong>Example 3:</strong> Section 3 | INTEGER | What is the square of 12? | | | | | 144 | 1 | 0 | 
             </div>
           `;
         }
