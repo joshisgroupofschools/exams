@@ -1,18 +1,658 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>My Google AI Studio App</title>
-    <meta name="description" content="An application built with Google AI Studio." />
-    <meta property="og:title" content="My Google AI Studio App" />
-    <meta property="og:description" content="An application built with Google AI Studio." />
-    <meta property="og:type" content="website" />
-    <meta name="twitter:card" content="summary_large_image" />
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Exam Management Software - Student Portal</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="./config.js"></script>
+    <style>
+      .timing-pill {
+        background: rgba(94, 200, 255, 0.12);
+        border: 1px solid rgba(94, 200, 255, 0.3);
+        border-radius: 8px;
+        padding: 6px 12px;
+        font-size: 0.85rem;
+        color: #5ec8ff;
+      }
+      .sec-badge {
+        background: rgba(123, 255, 207, 0.15);
+        color: #7bffcf;
+        border: 1px solid rgba(123, 255, 207, 0.3);
+        font-size: 0.8rem;
+        padding: 2px 8px;
+        border-radius: 6px;
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <div id="app"></div>
+    <script>
+      const BOOTSTRAP = {
+        appName: (window.APP_CONFIG && window.APP_CONFIG.appName) || 'Exam Management Software'
+      };
+
+      const state = {
+        view: 'login',
+        loading: false,
+        student: null,
+        exams: [],
+        activeExam: null,
+        attemptBundle: null,
+        result: null,
+        activeSubjectId: null,
+        activeQuestionId: null,
+        answers: {},
+        timerHandle: null,
+        isSubmitting: false,
+        error: '',
+        syncStatus: 'Saved'
+      };
+
+      const STUDENT_STORAGE_KEY = 'ems_active_student_id';
+
+      function setState(patch) {
+        Object.assign(state, patch);
+        render();
+      }
+
+      function callServer(action, payload, silent) {
+        const apiBaseUrl = getApiBaseUrl();
+        if (!silent) setState({ loading: true, error: '' });
+        return fetch(apiBaseUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: action, ...(payload || {}) })
+        }).then((response) => response.json())
+          .then((result) => {
+            if (!silent) state.loading = false;
+            if (!result.ok) {
+              throw new Error(result.error && result.error.message ? result.error.message : 'Something went wrong');
+            }
+            if (!silent) render();
+            return result.data;
+          })
+          .catch((err) => {
+            if (!silent) {
+              state.loading = false;
+              state.error = err && err.message ? err.message : 'Something went wrong';
+              render();
+            }
+            throw err;
+          });
+      }
+
+      function render() {
+        const root = document.getElementById('app');
+        root.innerHTML = `
+          <div class="app-shell">
+            ${renderTopbar()}
+            ${state.error ? `<div class="panel" style="border-color: rgba(255,113,113,.35); margin-bottom: 16px;"><div class="pill-danger">${escapeHtml(state.error)}</div></div>` : ''}
+            ${state.loading ? `<div class="loading">Loading instantly...</div>` : ''}
+            ${state.view === 'login' ? renderLogin() : ''}
+            ${state.view === 'dashboard' ? renderDashboard() : ''}
+            ${state.view === 'exam' ? renderExam() : ''}
+            ${state.view === 'result' ? renderResult() : ''}
+          </div>
+        `;
+      }
+
+      function renderTopbar() {
+        return `
+          <div class="topbar">
+            <div class="brand">
+              <div class="brand-mark">EMS</div>
+              <div>
+                <h1>${escapeHtml(BOOTSTRAP.appName)}</h1>
+                <p>${state.student ? `Student: ${escapeHtml(state.student.studentName)} (${escapeHtml(state.student.className)})` : 'Student Portal'}</p>
+              </div>
+            </div>
+            <div class="row">
+              ${state.student ? `<span class="badge">👤 ${escapeHtml(state.student.studentName)}</span>` : `<span class="badge">Student Access</span>`}
+              <button class="btn btn-secondary" onclick="location.href='admin.html'">Admin Portal</button>
+            </div>
+          </div>
+        `;
+      }
+
+      function renderLogin() {
+        return `
+          <div class="hero hero-grid">
+            <div class="stack">
+              <span class="badge">Online Examination Portal</span>
+              <h2 style="margin:10px 0 8px; font-size:clamp(2rem, 4vw, 3.6rem); line-height:1.05;">Student Sign In</h2>
+              <p class="muted">Enter your registered mobile number to take your exam. Your answers are auto-saved to the cloud with every click.</p>
+            </div>
+            <div class="panel login-card">
+              <div class="stack">
+                <h3 style="margin:0;">Sign In</h3>
+                <div class="field">
+                  <label>Registered Mobile Number</label>
+                  <input id="mobileNumber" class="input" type="tel" placeholder="e.g. 9876543210" onkeypress="if(event.key==='Enter') studentLogin()" />
+                </div>
+                <button class="btn btn-primary" onclick="studentLogin()">Login & View Exams</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      function renderDashboard() {
+        return `
+          <div class="hero hero-grid">
+            <div class="stack">
+              <span class="badge">${escapeHtml(state.student.className || 'Class')}</span>
+              <h2 style="margin:10px 0 8px; font-size:clamp(1.8rem, 3.2vw, 3rem);">Assigned Exams for ${escapeHtml(state.student.studentName)}</h2>
+              <p class="muted">Click <strong>Start Exam Now</strong> to begin. Your individual countdown timer will start immediately.</p>
+            </div>
+            <div class="grid cards-2">
+              <div class="card kpi"><span class="muted">Available Exams</span><strong>${state.exams.length}</strong></div>
+              <div class="card kpi"><span class="muted">Admission / Roll #</span><strong style="font-size:1.2rem;">${escapeHtml(state.student.admissionNumber)}</strong></div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="toolbar" style="margin-bottom:16px;">
+              <h3 style="margin:0;">Your Active Exams</h3>
+              <button class="btn btn-secondary" onclick="refreshStudentState()">Refresh</button>
+            </div>
+            <div class="list">
+              ${state.exams.length ? state.exams.map(renderExamCard).join('') : `<div class="empty">No active exams right now. If your exam has a scheduled start time (e.g. 7:00 AM), it will unlock at that exact time.</div>`}
+            </div>
+          </div>
+        `;
+      }
+
+      function renderExamCard(exam) {
+        const liveStart = exam.availabilityStart ? new Date(exam.availabilityStart) : null;
+        const entryEnd = exam.availabilityEnd ? new Date(exam.availabilityEnd) : null;
+        const now = new Date();
+
+        const isBeforeLive = liveStart && now < liveStart;
+        const isAfterEntry = entryEnd && now > entryEnd;
+
+        return `
+          <div class="exam-card">
+            <div class="stack">
+              <div class="row">
+                <strong style="font-size:1.15rem;">${escapeHtml(exam.examName)}</strong>
+                <span class="badge">${escapeHtml(exam.mode)}</span>
+              </div>
+              <div class="row muted" style="gap:16px; margin-top:4px;">
+                <span>📅 Date: ${escapeHtml(exam.examDate)}</span>
+                <span>⏱️ Duration: <strong>${escapeHtml(exam.durationMinutes)} mins</strong></span>
+              </div>
+              ${liveStart || entryEnd ? `
+                <div class="timing-pill">
+                  🕒 <strong>Time Window:</strong> 
+                  ${liveStart ? `Live from ${liveStart.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}` : 'Open now'}
+                  ${entryEnd ? ` until ${entryEnd.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}` : ''}
+                </div>
+              ` : ''}
+            </div>
+            <div class="row">
+              ${isBeforeLive ? `
+                <button class="btn btn-secondary" disabled>Opens at ${liveStart.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</button>
+              ` : isAfterEntry ? `
+                <button class="btn btn-danger" disabled>Entry Closed</button>
+              ` : `
+                <button class="btn btn-primary" onclick="startExamFlow('${exam.examId}')">Start Exam Now →</button>
+              `}
+            </div>
+          </div>
+        `;
+      }
+
+      function renderExam() {
+        const bundle = state.attemptBundle || {};
+        const subjects = bundle.subjects || [];
+        const questions = getOrderedQuestions(bundle);
+        const activeSubject = subjects.find((item) => String(item.examSubjectId) === String(state.activeSubjectId)) || subjects[0];
+        const subjectQuestions = questions.filter((item) => String(item.examSubjectId) === String(activeSubject && activeSubject.examSubjectId));
+        const activeQuestion = subjectQuestions.find((item) => String(item.questionId) === String(state.activeQuestionId)) || subjectQuestions[0];
+        const answeredMap = state.answers;
+        const remainingText = getRemainingTimeText(bundle.attempt && bundle.attempt.expiresAt);
+
+        return `
+          <div class="hero">
+            <div class="toolbar">
+              <div class="stack">
+                <span id="timer-badge" class="badge" style="font-weight:700; color:var(--accent); font-size:0.95rem;">⏱️ Time Remaining: ${remainingText}</span>
+                <h2 style="margin:8px 0 0;">${escapeHtml(bundle.exam ? bundle.exam.examName : 'Exam')}</h2>
+              </div>
+              <div class="row">
+                <span class="status" id="sync-indicator" style="margin-right:8px;">${escapeHtml(state.syncStatus)}</span>
+                <button class="btn btn-primary" onclick="submitAttempt(false)">Submit Exam</button>
+              </div>
+            </div>
+          </div>
+          <div class="question-shell">
+            <div class="panel question-nav">
+              <div class="stack">
+                <h3 style="margin:0;">Question Navigator</h3>
+                <div class="subject-tabs">
+                  ${subjects.map((subject) => `<button class="subject-tab ${String(subject.examSubjectId) === String(state.activeSubjectId) ? 'active' : ''}" onclick="setSubject('${subject.examSubjectId}')">${escapeHtml(subject.subjectName)}</button>`).join('')}
+                </div>
+                <div class="question-grid">
+                  ${subjectQuestions.map((question) => {
+                    const value = answeredMap[question.questionId];
+                    const answered = Array.isArray(value) ? value.length > 0 : value !== undefined && value !== null && value !== '';
+                    return `<button class="qchip ${answered ? 'answered' : ''} ${String(question.questionId) === String(state.activeQuestionId) ? 'active' : ''}" onclick="setQuestion('${question.questionId}')">${escapeHtml(question.questionNumber)}</button>`;
+                  }).join('')}
+                </div>
+                <div class="status">Answers auto-saved to cloud.</div>
+              </div>
+            </div>
+            <div class="panel">
+              ${activeQuestion ? renderQuestion(activeQuestion) : '<div class="empty">No question selected.</div>'}
+            </div>
+          </div>
+        `;
+      }
+
+      function renderQuestion(question) {
+        const options = getOrderedOptions(question);
+        const currentAnswer = state.answers[question.questionId];
+        const isMulti = question.questionType === 'MULTI_CORRECT';
+        const isInteger = question.questionType === 'INTEGER';
+
+        return `
+          <div class="stack">
+            <div class="row">
+              <span class="badge" style="font-weight:bold;">Question ${escapeHtml(question.questionNumber)}</span>
+              ${question.subSectionName ? `<span class="sec-badge">${escapeHtml(question.subSectionName)}</span>` : ''}
+              <span class="badge">${escapeHtml(question.questionType)}</span>
+              <span class="badge" style="color:var(--accent);">+${escapeHtml(question.fullMarks)} / ${escapeHtml(question.wrongMarks)} ${isMulti ? `(Partial: +${escapeHtml(question.partialMarks || 1)})` : ''}</span>
+            </div>
+            ${question.questionText ? `<div style="font-size:1.1rem; line-height:1.6; margin:10px 0;">${escapeHtml(question.questionText)}</div>` : ''}
+            ${question.imageUrl ? `<img src="${escapeAttribute(question.imageUrl)}" alt="Question Diagram" style="max-width:100%; max-height:400px; object-fit:contain; border-radius:14px; margin:8px 0;" />` : ''}
+            
+            ${isInteger ? `
+              <div class="field" style="margin-top:14px;">
+                <label>Enter Numerical / Integer Answer</label>
+                <input class="input" type="number" step="any" value="${currentAnswer !== undefined ? currentAnswer : ''}" oninput="saveIntegerAnswer('${question.questionId}', this.value)" placeholder="Type numerical value" />
+              </div>
+            ` : `
+              <div class="options" style="margin-top:14px;">
+                ${options.map((option) => `
+                  <label class="option" style="cursor:pointer;">
+                    <input ${isMulti ? 'type="checkbox"' : `type="radio" name="question_${question.questionId}"`} ${isOptionSelected(currentAnswer, option.id) ? 'checked' : ''} onchange="saveChoiceAnswer('${question.questionId}', '${option.id}', ${isMulti})" />
+                    <div>
+                      <strong>${escapeHtml(option.id)}</strong>
+                      ${option.label ? `<span class="muted" style="margin-left:8px;">${escapeHtml(option.label)}</span>` : ''}
+                    </div>
+                  </label>
+                `).join('')}
+              </div>
+            `}
+            <div class="toolbar" style="margin-top:24px;">
+              <button class="btn btn-secondary" onclick="goPrevQuestion()">← Previous Question</button>
+              <button class="btn btn-secondary" onclick="goNextQuestion()">Next Question →</button>
+            </div>
+          </div>
+        `;
+      }
+
+      function renderResult() {
+        const result = state.result || {};
+        const score = result.score || {};
+        const subjectEntries = Object.entries(score.subjectWise || {});
+        return `
+          <div class="hero hero-grid">
+            <div class="stack">
+              <span class="badge">Exam Result</span>
+              <h2 style="margin:8px 0 0;">${escapeHtml(result.exam ? result.exam.examName : 'Exam Result')}</h2>
+              <p class="muted">Your exam has been submitted and evaluated.</p>
+            </div>
+            <div class="grid cards-2">
+              <div class="card kpi"><span class="muted">Total Score</span><strong>${Number(score.totalMarksObtained || 0).toFixed(2)} / ${Number(score.totalMarks || 0).toFixed(2)}</strong></div>
+              <div class="card kpi"><span class="muted">Status</span><strong style="color:var(--accent); font-size:1.1rem;">${escapeHtml((result.attempt && result.attempt.status) || 'SUBMITTED')}</strong></div>
+            </div>
+          </div>
+          <div class="panel" style="margin-bottom:18px;">
+            <h3 style="margin-top:0;">Subject & Section-Wise Performance</h3>
+            <div class="grid cards-3">
+              ${subjectEntries.length ? subjectEntries.map(([subjectId, item]) => `
+                <div class="card">
+                  <div class="stack">
+                    <strong>${escapeHtml((result.subjectMap && result.subjectMap[subjectId]) || subjectId)}</strong>
+                    <span class="muted">${Number(item.marksObtained || 0).toFixed(2)} / ${Number(item.totalMarks || 0).toFixed(2)} marks</span>
+                    <span class="status pill-success">Correct: ${item.correct || 0}</span>
+                    <span class="status pill-warning">Partial: ${item.partial || 0}</span>
+                    <span class="status pill-danger">Wrong: ${item.wrong || 0}</span>
+                    <span class="status">Unattempted: ${item.unattempted || 0}</span>
+                  </div>
+                </div>
+              `).join('') : '<div class="empty">No subject details.</div>'}
+            </div>
+          </div>
+          <div class="panel">
+            <div class="toolbar" style="margin-bottom:16px;">
+              <h3 style="margin:0;">Question-by-Question Review</h3>
+              <button class="btn btn-secondary" onclick="refreshStudentState()">Return to Dashboard</button>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Subject</th>
+                    <th>Sub-Section</th>
+                    <th>Q#</th>
+                    <th>Your Answer</th>
+                    <th>Correct Answer</th>
+                    <th>Marks</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${(result.review || []).map((item) => `
+                    <tr>
+                      <td>${escapeHtml(item.subject)}</td>
+                      <td><span class="sec-badge">${escapeHtml(item.subSection || 'Section 1')}</span></td>
+                      <td>${escapeHtml(item.questionNumber)}</td>
+                      <td>${escapeHtml(Array.isArray(item.studentAnswer) ? item.studentAnswer.join(', ') : (item.studentAnswer || '—'))}</td>
+                      <td>${escapeHtml(item.correctAnswer || '—')}</td>
+                      <td><strong>${escapeHtml(item.marksReceived)}</strong></td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `;
+      }
+
+      async function studentLogin() {
+        const input = document.getElementById('mobileNumber');
+        const mobileNumber = input ? input.value.trim() : '';
+        if (!mobileNumber) {
+          setState({ error: 'Please enter your registered mobile number.' });
+          return;
+        }
+
+        try {
+          const result = await callServer('studentLogin', { mobileNumber });
+          sessionStorage.setItem(STUDENT_STORAGE_KEY, result.student.studentId);
+          setState({
+            student: result.student,
+            exams: result.exams,
+            view: 'dashboard',
+            result: null,
+            error: ''
+          });
+        } catch (e) {}
+      }
+
+      async function refreshStudentState() {
+        if (!state.student) return;
+        try {
+          const result = await callServer('getStudentState', { studentId: state.student.studentId });
+          stopTimer();
+          setState({
+            student: result.student,
+            exams: result.exams,
+            view: 'dashboard',
+            activeExam: null,
+            attemptBundle: null,
+            answers: {},
+            result: null,
+            error: ''
+          });
+        } catch (e) {}
+      }
+
+      async function startExamFlow(examId) {
+        try {
+          const bundle = await callServer('startExam', { studentId: state.student.studentId, examId });
+          applyAttemptBundle(bundle);
+        } catch (e) {}
+      }
+
+      function setSubject(subjectId) {
+        const firstQuestion = getOrderedQuestions(state.attemptBundle).find((item) => String(item.examSubjectId) === String(subjectId));
+        state.activeSubjectId = subjectId;
+        state.activeQuestionId = firstQuestion && firstQuestion.questionId;
+        render();
+      }
+
+      function setQuestion(questionId) {
+        state.activeQuestionId = questionId;
+        render();
+      }
+
+      function goPrevQuestion() { moveQuestion(-1); }
+      function goNextQuestion() { moveQuestion(1); }
+
+      function moveQuestion(step) {
+        const questions = getOrderedQuestions(state.attemptBundle).filter((item) => String(item.examSubjectId) === String(state.activeSubjectId));
+        const index = questions.findIndex((item) => String(item.questionId) === String(state.activeQuestionId));
+        const next = questions[index + step];
+        if (next) {
+          state.activeQuestionId = next.questionId;
+          render();
+        }
+      }
+
+      let saveDebounceTimer = null;
+      function saveIntegerAnswer(questionId, value) {
+        state.answers[questionId] = value;
+        updateSyncIndicator('Saving...');
+        clearTimeout(saveDebounceTimer);
+        saveDebounceTimer = setTimeout(() => {
+          syncAnswerToServer(questionId, value);
+        }, 500);
+      }
+
+      function saveChoiceAnswer(questionId, optionId, isMulti) {
+        let answer = state.answers[questionId];
+        if (isMulti) {
+          answer = Array.isArray(answer) ? answer.slice() : (answer ? [answer] : []);
+          const index = answer.indexOf(optionId);
+          if (index > -1) answer.splice(index, 1);
+          else answer.push(optionId);
+        } else {
+          answer = optionId;
+        }
+        state.answers[questionId] = answer;
+        render();
+        syncAnswerToServer(questionId, answer);
+      }
+
+      async function syncAnswerToServer(questionId, answer) {
+        updateSyncIndicator('Saving...');
+        try {
+          const response = await callServer('saveAnswer', {
+            studentId: state.student.studentId,
+            attemptId: state.attemptBundle.attempt.attemptId,
+            questionId,
+            answer
+          }, true);
+          updateSyncIndicator('Saved ✓');
+          if (response && response.exam && response.attempt) {
+            stopTimer();
+            setState({ result: response, view: 'result', isSubmitting: false });
+          }
+        } catch (e) {
+          updateSyncIndicator('Saved (Local) ✓');
+        }
+      }
+
+      function updateSyncIndicator(text) {
+        state.syncStatus = text;
+        const el = document.getElementById('sync-indicator');
+        if (el) el.textContent = text;
+      }
+
+      async function submitAttempt(isAuto) {
+        if (state.isSubmitting) return;
+        if (!isAuto && !confirm('Are you sure you want to submit your exam now?')) {
+          return;
+        }
+        state.isSubmitting = true;
+        try {
+          const result = await callServer('finalizeAttempt', {
+            studentId: state.student.studentId,
+            attemptId: state.attemptBundle.attempt.attemptId,
+            isAutoSubmit: !!isAuto
+          });
+          stopTimer();
+          setState({ result, view: 'result', isSubmitting: false, error: '' });
+        } catch (e) {
+          state.isSubmitting = false;
+        }
+      }
+
+      function startTimer() {
+        stopTimer();
+        state.timerHandle = setInterval(() => {
+          const expiresAt = state.attemptBundle && state.attemptBundle.attempt && state.attemptBundle.attempt.expiresAt;
+          const remaining = getRemainingMillis(expiresAt);
+          const badge = document.getElementById('timer-badge');
+          if (badge) {
+            badge.textContent = `⏱️ Time Remaining: ${getRemainingTimeText(expiresAt)}`;
+          }
+          if (remaining <= 0) {
+            stopTimer();
+            submitAttempt(true);
+          }
+        }, 1000);
+      }
+
+      function stopTimer() {
+        if (state.timerHandle) {
+          clearInterval(state.timerHandle);
+          state.timerHandle = null;
+        }
+      }
+
+      function getRemainingMillis(expiresAt) {
+        if (!expiresAt) return 0;
+        return Math.max(0, new Date(expiresAt).getTime() - Date.now());
+      }
+
+      function getRemainingTimeText(expiresAt) {
+        return formatDuration(Math.floor(getRemainingMillis(expiresAt) / 1000));
+      }
+
+      function formatDuration(totalSeconds) {
+        const seconds = Math.max(0, Number(totalSeconds || 0));
+        const hours = String(Math.floor(seconds / 3600)).padStart(2, '0');
+        const minutes = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0');
+        const secs = String(seconds % 60).padStart(2, '0');
+        return `${hours}:${minutes}:${secs}`;
+      }
+
+      function parseJson(text, fallback) {
+        try { return text ? JSON.parse(text) : fallback; } catch (e) { return fallback; }
+      }
+
+      function getOrderedQuestions(bundle) {
+        const questions = (bundle && bundle.questions) || [];
+        const questionOrder = parseJson(bundle && bundle.attempt && bundle.attempt.questionOrderJson, {});
+        const ordered = [];
+        const consumed = new Set();
+        Object.keys(questionOrder).forEach((subjectId) => {
+          (questionOrder[subjectId] || []).forEach((questionId) => {
+            const question = questions.find((item) => String(item.questionId) === String(questionId));
+            if (question) {
+              ordered.push(question);
+              consumed.add(String(questionId));
+            }
+          });
+        });
+        questions.forEach((question) => {
+          if (!consumed.has(String(question.questionId))) ordered.push(question);
+        });
+        return ordered;
+      }
+
+      function getOrderedOptions(question) {
+        const options = parseJson(question.optionsJson, []);
+        const optionOrder = parseJson(state.attemptBundle && state.attemptBundle.attempt && state.attemptBundle.attempt.optionOrderJson, {});
+        const orderedIds = optionOrder[question.questionId] || [];
+        const ordered = [];
+        const consumed = new Set();
+        orderedIds.forEach((id) => {
+          const option = options.find((item) => String(item.id) === String(id));
+          if (option) {
+            ordered.push(option);
+            consumed.add(String(id));
+          }
+        });
+        options.forEach((option) => {
+          if (!consumed.has(String(option.id))) ordered.push(option);
+        });
+        return ordered;
+      }
+
+      function isOptionSelected(currentAnswer, optionId) {
+        return Array.isArray(currentAnswer) ? currentAnswer.includes(optionId) : String(currentAnswer) === String(optionId);
+      }
+
+      function applyAttemptBundle(bundle) {
+        const answers = {};
+        (bundle.answers || []).forEach((answer) => {
+          answers[answer.questionId] = parseJson(answer.answerJson, '');
+        });
+        const firstSubject = (bundle.subjects || [])[0];
+        const firstQuestion = getOrderedQuestions(bundle).find((item) => String(item.examSubjectId) === String(firstSubject && firstSubject.examSubjectId));
+        setState({
+          activeExam: bundle.exam,
+          attemptBundle: bundle,
+          answers,
+          activeSubjectId: firstSubject && firstSubject.examSubjectId,
+          activeQuestionId: firstQuestion && firstQuestion.questionId,
+          view: 'exam',
+          isSubmitting: false,
+          error: ''
+        });
+        startTimer();
+      }
+
+      async function restoreStudentSession() {
+        const studentId = localStorage.getItem(STUDENT_STORAGE_KEY) || sessionStorage.getItem(STUDENT_STORAGE_KEY);
+        if (!studentId) return;
+        try {
+          const portalState = await callServer('getStudentPortalState', { studentId }, true);
+          if (!portalState || !portalState.student) return;
+          localStorage.setItem(STUDENT_STORAGE_KEY, studentId);
+          sessionStorage.setItem(STUDENT_STORAGE_KEY, studentId);
+          if (portalState.activeAttemptBundle) {
+            setState({
+              student: portalState.student,
+              exams: portalState.exams
+            });
+            applyAttemptBundle(portalState.activeAttemptBundle);
+            return;
+          }
+          setState({
+            student: portalState.student,
+            exams: portalState.exams,
+            view: 'dashboard'
+          });
+        } catch (err) {
+          localStorage.removeItem(STUDENT_STORAGE_KEY);
+          sessionStorage.removeItem(STUDENT_STORAGE_KEY);
+        }
+      }
+
+      function getApiBaseUrl() {
+        const url = window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl;
+        if (!url) throw new Error('API base URL missing in config.js');
+        return url;
+      }
+
+      function escapeHtml(text) {
+        return String(text === undefined || text === null ? '' : text)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function escapeAttribute(text) { return escapeHtml(text); }
+
+      render();
+      restoreStudentSession();
+    </script>
   </body>
 </html>
-

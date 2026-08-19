@@ -3,44 +3,63 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Exam Management Admin - High Speed & Advanced Analytics</title>
+    <title>Exam Management Admin - Section Builder & Color Heatmap Analytics</title>
     <link rel="stylesheet" href="./styles.css" />
     <script src="./config.js"></script>
     <style>
-      .rank-badge-1 { background: linear-gradient(135deg, #ffd700, #ffae00); color: #2a1b00; font-weight: bold; border-radius: 6px; padding: 3px 8px; font-size: 0.8rem; box-shadow: 0 2px 10px rgba(255, 215, 0, 0.4); }
-      .rank-badge-2 { background: linear-gradient(135deg, #e0e0e0, #a0a0a0); color: #1a1a1a; font-weight: bold; border-radius: 6px; padding: 3px 8px; font-size: 0.8rem; box-shadow: 0 2px 10px rgba(200, 200, 200, 0.3); }
-      .rank-badge-3 { background: linear-gradient(135deg, #cd7f32, #a0522d); color: #ffffff; font-weight: bold; border-radius: 6px; padding: 3px 8px; font-size: 0.8rem; box-shadow: 0 2px 10px rgba(205, 127, 50, 0.3); }
-      .podium-card { background: rgba(145, 179, 255, 0.06); border: 1px solid rgba(145, 179, 255, 0.16); border-radius: 14px; padding: 16px; position: relative; overflow: hidden; }
-      .podium-card.gold { border-color: rgba(255, 215, 0, 0.4); background: rgba(255, 215, 0, 0.05); }
-      .podium-card.silver { border-color: rgba(220, 220, 220, 0.35); background: rgba(220, 220, 220, 0.04); }
-      .podium-card.bronze { border-color: rgba(205, 127, 50, 0.35); background: rgba(205, 127, 50, 0.04); }
+      .rank-tag-green { background: #10b981; color: #042416; font-weight: bold; border-radius: 6px; padding: 4px 10px; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 4px; box-shadow: 0 2px 10px rgba(16, 185, 129, 0.35); }
+      .rank-tag-yellow { background: #f59e0b; color: #2c1a00; font-weight: bold; border-radius: 6px; padding: 4px 10px; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 4px; box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3); }
+      .rank-tag-red { background: #ef4444; color: #ffffff; font-weight: bold; border-radius: 6px; padding: 4px 10px; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 4px; box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3); }
+      
+      .wizard-box { background: rgba(255,255,255,0.03); border: 1px solid rgba(145,179,255,0.2); border-radius: 16px; padding: 20px; margin-bottom: 20px; }
+      .sec-row { background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 14px; margin-bottom: 12px; }
+      .opt-editor-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+      .opt-letter-badge { width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.08); border-radius: 8px; font-weight: bold; font-size: 0.95rem; }
+      .subject-pill { padding: 8px 18px; border-radius: 20px; font-size: 0.9rem; font-weight: 600; cursor: pointer; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.04); transition: all 0.15s ease; }
+      .subject-pill.active { background: #5ec8ff; color: #07111f; border-color: #5ec8ff; box-shadow: 0 0 16px rgba(94,200,255,0.3); }
+      
+      .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.8); backdrop-filter: blur(6px); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 16px; }
+      .modal-content { background: #0c182f; border: 1px solid rgba(145, 179, 255, 0.3); border-radius: 20px; max-width: 1040px; width: 100%; max-height: 92vh; overflow-y: auto; padding: 26px; box-shadow: 0 20px 70px rgba(0,0,0,0.7); }
+      
+      .q-card-editor { background: rgba(255,255,255,0.03); border: 1px solid rgba(145,179,255,0.18); border-radius: 16px; padding: 18px; margin-bottom: 16px; }
+      .correct-check { width: 22px; height: 22px; accent-color: #10b981; cursor: pointer; }
+      .draft-badge { background: rgba(93, 226, 155, 0.15); color: #5de29b; border: 1px solid rgba(93, 226, 155, 0.3); font-size: 0.8rem; padding: 4px 10px; border-radius: 20px; display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
     </style>
   </head>
   <body>
     <div id="adminApp"></div>
     <div id="overlay" class="overlay" onclick="closeDrawer()"></div>
     <div id="drawer" class="drawer"></div>
+    <div id="builderModal" style="display: none;"></div>
+
     <script>
       const BOOTSTRAP = {
         appName: (window.APP_CONFIG && window.APP_CONFIG.appName) || 'Exam Management Software'
       };
 
+      const DRAFT_STORAGE_KEY = 'ems_admin_exam_draft_v3';
+      const TOKEN_STORAGE_KEY = 'ems_admin_token_v3';
+
       const adminState = {
-        token: sessionStorage.getItem('adminToken') || '',
+        token: localStorage.getItem(TOKEN_STORAGE_KEY) || sessionStorage.getItem('adminToken') || '',
         view: 'overview',
         loading: false,
         dashboard: null,
         analytics: null,
+        selectedAnalyticsExamId: '',
         students: [],
         exams: [],
         classes: [],
         error: '',
-        selectedClassFilter: ''
+        editingExam: null,
+        activeSubjectIndex: 0,
+        wizardStep: 'structure', // 'structure' or 'questions'
+        draftStatus: 'Auto-saved locally ✓'
       };
 
       const EXAM_MODE_OPTIONS = [
-        { value: 'FULL_ONLINE_EXAM', label: 'Full Online Exam (On-screen questions & timer)' },
-        { value: 'PHYSICAL_PAPER', label: 'Physical Paper / Answer Sheet Entry' }
+        { value: 'FULL_ONLINE_EXAM', label: 'Full Online Exam (Questions on screen & Timer)' },
+        { value: 'PHYSICAL_PAPER', label: 'Physical Paper / Answer Key Entry' }
       ];
 
       const RESULT_MODE_OPTIONS = [
@@ -50,6 +69,54 @@
 
       const EXAM_STATUS_OPTIONS = ['DRAFT', 'PUBLISHED', 'ACTIVE', 'ENDED', 'ARCHIVED'];
       const SIMPLE_STATUS_OPTIONS = ['ACTIVE', 'INACTIVE'];
+
+      // ==========================================
+      // PERSISTENCE & AUTO-SAVE SHIELD
+      // ==========================================
+      function persistDraftToStorage() {
+        if (!adminState.editingExam) {
+          localStorage.removeItem(DRAFT_STORAGE_KEY);
+          return;
+        }
+        try {
+          const draftPayload = {
+            editingExam: adminState.editingExam,
+            wizardStep: adminState.wizardStep,
+            activeSubjectIndex: adminState.activeSubjectIndex,
+            savedAt: new Date().toISOString()
+          };
+          localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draftPayload));
+          adminState.draftStatus = 'Auto-saved locally ✓';
+          const indicator = document.getElementById('draft-indicator');
+          if (indicator) indicator.textContent = 'Auto-saved locally ✓';
+        } catch (e) {}
+      }
+
+      function restoreDraftFromStorage() {
+        try {
+          const raw = localStorage.getItem(DRAFT_STORAGE_KEY);
+          if (!raw) return false;
+          const data = JSON.parse(raw);
+          if (data && data.editingExam && data.editingExam.subjects && data.editingExam.subjects.length) {
+            adminState.editingExam = data.editingExam;
+            adminState.wizardStep = data.wizardStep || 'structure';
+            adminState.activeSubjectIndex = Number(data.activeSubjectIndex || 0);
+            renderWizardModal();
+            return true;
+          }
+        } catch (e) {}
+        return false;
+      }
+
+      function discardDraft() {
+        if (!confirm('Are you sure you want to discard this exam draft? All unsaved questions in this draft will be cleared.')) {
+          return;
+        }
+        localStorage.removeItem(DRAFT_STORAGE_KEY);
+        adminState.editingExam = null;
+        closeWizardModal();
+        renderAdmin();
+      }
 
       function setAdminState(patch) {
         Object.assign(adminState, patch);
@@ -86,7 +153,7 @@
           <div class="app-shell">
             ${renderAdminTopbar()}
             ${adminState.error ? `<div class="panel" style="border-color: rgba(255,113,113,.35); margin-bottom: 16px;"><div class="pill-danger">${escapeHtml(adminState.error)}</div></div>` : ''}
-            ${adminState.loading ? `<div class="loading">Loading, please wait...</div>` : ''}
+            ${adminState.loading ? `<div class="loading">Processing...</div>` : ''}
             ${!adminState.token ? renderAdminLogin() : renderAdminWorkspace()}
           </div>
         `;
@@ -103,8 +170,8 @@
               </div>
             </div>
             <div class="row">
-              <button class="btn btn-secondary" onclick="location.href='student.html'">Student Portal</button>
-              ${adminState.token ? `<button class="btn btn-danger" onclick="logoutAdmin()">Logout</button>` : ''}
+              <button type="button" class="btn btn-secondary" onclick="location.href='index.html'">Student Portal</button>
+              ${adminState.token ? `<button type="button" class="btn btn-danger" onclick="logoutAdmin()">Logout</button>` : ''}
             </div>
           </div>
         `;
@@ -125,7 +192,7 @@
                   <label>Admin Password</label>
                   <input id="adminPassword" class="input" type="password" placeholder="Enter password" onkeypress="if(event.key==='Enter') loginAdmin()" />
                 </div>
-                <button class="btn btn-primary" onclick="loginAdmin()">Login</button>
+                <button type="button" class="btn btn-primary" onclick="loginAdmin()">Login</button>
               </div>
             </div>
           </div>
@@ -148,25 +215,25 @@
             <div class="panel sidebar">
               <div class="navmenu">
                 ${renderNavButton('overview', 'Overview')}
+                ${renderNavButton('exams', 'Exams & Question Builder')}
+                ${renderNavButton('analytics', 'Performance Analytics (Heatmap)')}
                 ${renderNavButton('students', 'Students')}
                 ${renderNavButton('classes', 'Classes')}
-                ${renderNavButton('exams', 'Exams & Scheduling')}
-                ${renderNavButton('analytics', 'Advanced Analytics')}
               </div>
             </div>
             <div class="stack">
               ${adminState.view === 'overview' ? renderOverview() : ''}
-              ${adminState.view === 'students' ? renderStudents() : ''}
-              ${adminState.view === 'classes' ? renderClasses() : ''}
               ${adminState.view === 'exams' ? renderExams() : ''}
               ${adminState.view === 'analytics' ? renderAnalytics() : ''}
+              ${adminState.view === 'students' ? renderStudents() : ''}
+              ${adminState.view === 'classes' ? renderClasses() : ''}
             </div>
           </div>
         `;
       }
 
       function renderNavButton(view, label) {
-        return `<button class="btn btn-secondary navbtn ${adminState.view === view ? 'active' : ''}" onclick="switchAdminView('${view}')">${label}</button>`;
+        return `<button type="button" class="btn btn-secondary navbtn ${adminState.view === view ? 'active' : ''}" onclick="switchAdminView('${view}')">${label}</button>`;
       }
 
       function renderOverview() {
@@ -180,17 +247,632 @@
           </div>
           <div class="panel">
             <div class="toolbar" style="margin-bottom:16px;">
-              <h3 style="margin:0;">Quick Actions</h3>
-              <button class="btn btn-secondary" onclick="refreshAdminDashboard()">Refresh Data</button>
+              <h3 style="margin:0;">Teacher Quick Actions</h3>
+              <button type="button" class="btn btn-secondary" onclick="refreshAdminDashboard()">Refresh Data</button>
             </div>
             <div class="row">
-              <button class="btn btn-primary" onclick="openStudentDrawer()">Add Student</button>
-              <button class="btn btn-secondary" onclick="openClassDrawer()">Add Class</button>
-              <button class="btn btn-secondary" onclick="openExamDrawer()">Create & Schedule Exam</button>
-              <button class="btn btn-secondary" onclick="downloadStudentTemplate()">Download Student Template CSV</button>
+              <button type="button" class="btn btn-primary" onclick="openCreateExamWizard()">+ Create Test Paper & Questions</button>
+              <button type="button" class="btn btn-secondary" onclick="switchAdminView('analytics')">View Heatmap Analytics</button>
+              <button type="button" class="btn btn-secondary" onclick="openStudentDrawer()">Add Student</button>
+              <button type="button" class="btn btn-secondary" onclick="openClassDrawer()">Add Class</button>
             </div>
           </div>
         `;
+      }
+
+      function renderExams() {
+        return `
+          <div class="panel">
+            <div class="toolbar" style="margin-bottom:16px;">
+              <div>
+                <h3 style="margin:0;">Exams & Question Management</h3>
+                <p class="muted" style="margin:4px 0 0; font-size:0.85rem;">Define Subjects (Maths, Physics, Chemistry), enter Question Statements, Options & Partial Marking.</p>
+              </div>
+              <button type="button" class="btn btn-primary" onclick="openCreateExamWizard()">+ Create New Exam Paper</button>
+            </div>
+            <div class="list">
+              ${(adminState.exams || []).map((exam) => {
+                const totalQ = (exam.subjects || []).reduce((sum, s) => sum + (s.questions ? s.questions.length : 0), 0);
+                const subNames = (exam.subjects || []).map(s => s.subjectName).join(', ');
+                return `
+                  <div class="exam-card">
+                    <div class="stack">
+                      <div class="row">
+                        <strong style="font-size:1.15rem;">${escapeHtml(exam.examName)}</strong>
+                        <span class="badge">${escapeHtml(exam.status)}</span>
+                        <span class="badge" style="background:#5ec8ff/20; color:#5ec8ff;">${totalQ} Total Questions</span>
+                      </div>
+                      <div class="muted">
+                        📚 Subjects: <strong>${escapeHtml(subNames || 'General')}</strong> · 📅 Date: ${escapeHtml(exam.examDate)} · ⏱️ Duration: ${escapeHtml(exam.durationMinutes)} min 
+                        ${exam.availabilityStart ? `· 🟢 Live: ${new Date(exam.availabilityStart).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}` : ''}
+                        ${exam.availabilityEnd ? `· 🛑 Cutoff: ${new Date(exam.availabilityEnd).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}` : ''}
+                      </div>
+                    </div>
+                    <div class="row">
+                      <button type="button" class="btn btn-primary" onclick="openExistingExamWizard('${escapeJs(exam.examId)}')">📝 Edit Questions & Options (${totalQ})</button>
+                      <button type="button" class="btn btn-secondary" onclick="openExamSettingsDrawer('${escapeJs(exam.examId)}')">⚙️ Timing & Settings</button>
+                      <button type="button" class="btn btn-secondary" onclick="setExamStatus('${exam.examId}', 'PUBLISHED')">Publish</button>
+                      <button type="button" class="btn btn-secondary" onclick="duplicateExam('${exam.examId}')">Duplicate</button>
+                      <button type="button" class="btn btn-danger" onclick="removeExam('${exam.examId}')">Delete</button>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        `;
+      }
+
+      // ==========================================
+      // SECTION WIZARD & QUESTION/OPTIONS EDITOR
+      // ==========================================
+      function openCreateExamWizard() {
+        const today = new Date().toISOString().split('T')[0];
+        adminState.editingExam = {
+          examId: '',
+          examName: 'Main Exam Paper',
+          examDate: today,
+          durationMinutes: 90,
+          availabilityStart: '',
+          availabilityEnd: '',
+          mode: 'FULL_ONLINE_EXAM',
+          resultMode: 'IMMEDIATE',
+          status: 'DRAFT',
+          assignedStudentIds: (adminState.students || []).filter(s => s.status === 'ACTIVE').map(s => s.studentId),
+          subjects: [
+            {
+              examSubjectId: 'sub_maths',
+              subjectName: 'Mathematics',
+              subSections: [
+                { name: 'Section 1: Single Correct MCQs', type: 'SINGLE_CORRECT', count: 10, fullMarks: 4, partialMarks: 0, wrongMarks: -1 },
+                { name: 'Section 2: Multi-Correct (Partial Marking)', type: 'MULTI_CORRECT', count: 5, fullMarks: 4, partialMarks: 1, wrongMarks: -2 },
+                { name: 'Section 3: Numerical Value', type: 'INTEGER', count: 5, fullMarks: 4, partialMarks: 0, wrongMarks: 0 }
+              ],
+              questions: []
+            },
+            {
+              examSubjectId: 'sub_physics',
+              subjectName: 'Physics',
+              subSections: [
+                { name: 'Section 1: Single Correct MCQs', type: 'SINGLE_CORRECT', count: 10, fullMarks: 4, partialMarks: 0, wrongMarks: -1 },
+                { name: 'Section 2: Multi-Correct (Partial Marking)', type: 'MULTI_CORRECT', count: 5, fullMarks: 4, partialMarks: 1, wrongMarks: -2 },
+                { name: 'Section 3: Numerical Value', type: 'INTEGER', count: 5, fullMarks: 4, partialMarks: 0, wrongMarks: 0 }
+              ],
+              questions: []
+            },
+            {
+              examSubjectId: 'sub_chem',
+              subjectName: 'Chemistry',
+              subSections: [
+                { name: 'Section 1: Single Correct MCQs', type: 'SINGLE_CORRECT', count: 10, fullMarks: 4, partialMarks: 0, wrongMarks: -1 },
+                { name: 'Section 2: Multi-Correct (Partial Marking)', type: 'MULTI_CORRECT', count: 5, fullMarks: 4, partialMarks: 1, wrongMarks: -2 },
+                { name: 'Section 3: Numerical Value', type: 'INTEGER', count: 5, fullMarks: 4, partialMarks: 0, wrongMarks: 0 }
+              ],
+              questions: []
+            }
+          ]
+        };
+        adminState.activeSubjectIndex = 0;
+        adminState.wizardStep = 'structure';
+        persistDraftToStorage();
+        renderWizardModal();
+      }
+
+      async function openExistingExamWizard(examId) {
+        let exam = await callAdmin('getExamDetail', { token: adminState.token, examId });
+        adminState.editingExam = JSON.parse(JSON.stringify(exam));
+        adminState.activeSubjectIndex = 0;
+        const totalQ = adminState.editingExam.subjects.reduce((sum, s) => sum + (s.questions ? s.questions.length : 0), 0);
+        adminState.wizardStep = totalQ > 0 ? 'questions' : 'structure';
+        persistDraftToStorage();
+        renderWizardModal();
+      }
+
+      function renderWizardModal() {
+        const modal = document.getElementById('builderModal');
+        const exam = adminState.editingExam;
+        if (!exam) return;
+
+        modal.style.display = 'flex';
+        modal.className = 'modal-backdrop';
+
+        if (adminState.wizardStep === 'structure') {
+          modal.innerHTML = renderStructureStep(exam);
+        } else {
+          modal.innerHTML = renderQuestionsStep(exam);
+        }
+      }
+
+      function renderStructureStep(exam) {
+        return `
+          <div class="modal-content">
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:14px; margin-bottom:18px;">
+              <div>
+                <span class="badge" style="background:#5ec8ff; color:#03111d; font-weight:bold;">Step 1: Exam Structure & Blueprint</span>
+                <h2 style="margin:6px 0 0; font-size:1.35rem;">Define Subjects & Sub-Sections</h2>
+              </div>
+              <div class="row">
+                <span class="draft-badge" id="draft-indicator">💾 Auto-saved locally ✓</span>
+                <button type="button" class="btn btn-danger" style="padding:6px 12px; font-size:0.8rem;" onclick="discardDraft()">Discard Draft</button>
+                <button type="button" class="btn btn-secondary" onclick="closeWizardModal()">Close</button>
+              </div>
+            </div>
+
+            <div class="grid cards-2" style="margin-bottom:16px;">
+              ${renderField('Exam Title / Name', 'wizardExamName', exam.examName || '', 'text', 'updateExamMeta("examName", this.value)')}
+              ${renderField('Exam Duration (Minutes)', 'wizardDuration', exam.durationMinutes || 90, 'number', 'updateExamMeta("durationMinutes", Number(this.value))')}
+            </div>
+
+            <div class="stack">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <label style="font-weight:600; font-size:0.95rem; color:#5ec8ff;">MAIN SUBJECTS (${exam.subjects.length}):</label>
+                <button type="button" class="btn btn-secondary" style="font-size:0.8rem; padding:4px 10px;" onclick="addSubjectToWizard()">+ Add Subject (e.g. Maths, Physics, Chemistry)</button>
+              </div>
+
+              ${exam.subjects.map((sub, sIdx) => `
+                <div class="wizard-box">
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                      <span class="badge">Subject ${sIdx + 1}</span>
+                      <input type="text" class="input" style="width:220px; font-weight:bold;" value="${escapeAttribute(sub.subjectName)}" oninput="updateSubjectName(${sIdx}, this.value)" placeholder="Subject Name" />
+                    </div>
+                    <div class="row">
+                      <button type="button" class="btn btn-secondary" style="font-size:0.75rem; padding:4px 10px;" onclick="addSubSection(${sIdx})">+ Add Sub-Section</button>
+                      ${exam.subjects.length > 1 ? `<button type="button" class="btn btn-danger" style="font-size:0.75rem; padding:4px 10px;" onclick="removeSubjectFromWizard(${sIdx})">Remove Subject</button>` : ''}
+                    </div>
+                  </div>
+
+                  <div class="stack">
+                    ${(sub.subSections || []).map((sec, secIdx) => `
+                      <div class="sec-row">
+                        <div style="display:grid; grid-template-columns: 2fr 1.6fr 1fr 1fr 1fr 1fr auto; gap:8px; align-items:center;">
+                          <div>
+                            <label style="font-size:0.75rem; color:#8ea0bf;">Sub-Section Title</label>
+                            <input type="text" class="input" value="${escapeAttribute(sec.name || '')}" oninput="updateSubSec(${sIdx}, ${secIdx}, 'name', this.value)" placeholder="e.g. Section 1 (MCQs)" />
+                          </div>
+                          <div>
+                            <label style="font-size:0.75rem; color:#8ea0bf;">Question Type</label>
+                            <select class="select" onchange="updateSubSec(${sIdx}, ${secIdx}, 'type', this.value)">
+                              <option value="SINGLE_CORRECT" ${sec.type === 'SINGLE_CORRECT' ? 'selected' : ''}>Single Correct (MCQ)</option>
+                              <option value="MULTI_CORRECT" ${sec.type === 'MULTI_CORRECT' ? 'selected' : ''}>Multiple Correct (Partial Mark)</option>
+                              <option value="INTEGER" ${sec.type === 'INTEGER' ? 'selected' : ''}>Numerical / Integer</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label style="font-size:0.75rem; color:#8ea0bf;"># Questions</label>
+                            <input type="number" class="input" min="1" value="${sec.count || 10}" oninput="updateSubSec(${sIdx}, ${secIdx}, 'count', Number(this.value))" />
+                          </div>
+                          <div>
+                            <label style="font-size:0.75rem; color:#8ea0bf;">+ Full</label>
+                            <input type="number" class="input" value="${sec.fullMarks !== undefined ? sec.fullMarks : 4}" oninput="updateSubSec(${sIdx}, ${secIdx}, 'fullMarks', Number(this.value))" />
+                          </div>
+                          <div>
+                            <label style="font-size:0.75rem; color:#8ea0bf;">+ Partial</label>
+                            <input type="number" class="input" value="${sec.partialMarks !== undefined ? sec.partialMarks : 1}" oninput="updateSubSec(${sIdx}, ${secIdx}, 'partialMarks', Number(this.value))" />
+                          </div>
+                          <div>
+                            <label style="font-size:0.75rem; color:#8ea0bf;">- Penalty</label>
+                            <input type="number" class="input" value="${sec.wrongMarks !== undefined ? sec.wrongMarks : -1}" oninput="updateSubSec(${sIdx}, ${secIdx}, 'wrongMarks', Number(this.value))" />
+                          </div>
+                          <div style="padding-top:16px;">
+                            ${(sub.subSections || []).length > 1 ? `<button type="button" class="btn btn-danger" style="padding:4px 8px; font-size:0.8rem;" onclick="removeSubSection(${sIdx}, ${secIdx})">×</button>` : ''}
+                          </div>
+                        </div>
+                      </div>
+                    `).join('')}
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:20px; border-top:1px solid rgba(255,255,255,0.1); padding-top:16px;">
+              <div class="muted" style="font-size:0.85rem;">
+                Total Questions to Generate: <strong>${calculateTotalQuestions(exam)}</strong>
+              </div>
+              <button type="button" class="btn btn-primary" style="font-size:1rem; padding:10px 24px;" onclick="generatePaperQuestions()">
+                🚀 Generate Paper & Enter Questions / Options →
+              </button>
+            </div>
+          </div>
+        `;
+      }
+
+      function calculateTotalQuestions(exam) {
+        let count = 0;
+        (exam.subjects || []).forEach(sub => {
+          (sub.subSections || []).forEach(sec => {
+            count += Number(sec.count || 0);
+          });
+        });
+        return count;
+      }
+
+      function updateExamMeta(field, val) {
+        adminState.editingExam[field] = val;
+        persistDraftToStorage();
+      }
+      function updateSubjectName(sIdx, val) {
+        adminState.editingExam.subjects[sIdx].subjectName = val;
+        persistDraftToStorage();
+      }
+      function addSubjectToWizard() {
+        adminState.editingExam.subjects.push({
+          examSubjectId: 'sub_' + Date.now(),
+          subjectName: 'New Subject',
+          subSections: [{ name: 'Section 1: Single Correct', type: 'SINGLE_CORRECT', count: 10, fullMarks: 4, partialMarks: 0, wrongMarks: -1 }],
+          questions: []
+        });
+        persistDraftToStorage();
+        renderWizardModal();
+      }
+      function removeSubjectFromWizard(sIdx) {
+        adminState.editingExam.subjects.splice(sIdx, 1);
+        persistDraftToStorage();
+        renderWizardModal();
+      }
+      function addSubSection(sIdx) {
+        const sub = adminState.editingExam.subjects[sIdx];
+        if (!sub.subSections) sub.subSections = [];
+        const nextNum = sub.subSections.length + 1;
+        sub.subSections.push({ name: `Section ${nextNum}`, type: 'SINGLE_CORRECT', count: 5, fullMarks: 4, partialMarks: 1, wrongMarks: -1 });
+        persistDraftToStorage();
+        renderWizardModal();
+      }
+      function removeSubSection(sIdx, secIdx) {
+        adminState.editingExam.subjects[sIdx].subSections.splice(secIdx, 1);
+        persistDraftToStorage();
+        renderWizardModal();
+      }
+      function updateSubSec(sIdx, secIdx, field, val) {
+        adminState.editingExam.subjects[sIdx].subSections[secIdx][field] = val;
+        persistDraftToStorage();
+      }
+
+      function generatePaperQuestions() {
+        const exam = adminState.editingExam;
+        let globalQNum = 1;
+
+        exam.subjects.forEach(sub => {
+          const generatedQuestions = [];
+          (sub.subSections || []).forEach(sec => {
+            const count = Number(sec.count || 5);
+            for (let i = 0; i < count; i++) {
+              generatedQuestions.push({
+                questionId: 'q_' + Date.now() + '_' + globalQNum,
+                subSectionName: sec.name,
+                questionNumber: globalQNum,
+                questionType: sec.type,
+                questionText: '',
+                imageUrl: '',
+                options: [
+                  { id: 'A', label: '' },
+                  { id: 'B', label: '' },
+                  { id: 'C', label: '' },
+                  { id: 'D', label: '' }
+                ],
+                correctAnswer: sec.type === 'INTEGER' ? '0' : 'A',
+                fullMarks: sec.fullMarks !== undefined ? sec.fullMarks : 4,
+                partialMarks: sec.partialMarks !== undefined ? sec.partialMarks : 1,
+                wrongMarks: sec.wrongMarks !== undefined ? sec.wrongMarks : -1
+              });
+              globalQNum++;
+            }
+          });
+          sub.questions = generatedQuestions;
+        });
+
+        adminState.wizardStep = 'questions';
+        adminState.activeSubjectIndex = 0;
+        persistDraftToStorage();
+        renderWizardModal();
+      }
+
+      // STEP 2: RICH QUESTION & OPTION TEXT EDITOR
+      function renderQuestionsStep(exam) {
+        const currentSubject = exam.subjects[adminState.activeSubjectIndex] || exam.subjects[0];
+        const questions = currentSubject ? (currentSubject.questions || []) : [];
+
+        return `
+          <div class="modal-content">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:18px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:14px;">
+              <div>
+                <span class="badge" style="background:#5de29b; color:#03111d; font-weight:bold;">Step 2: Type Questions & Options</span>
+                <h2 style="margin:6px 0 0; font-size:1.35rem;">${escapeHtml(exam.examName)}</h2>
+                <p class="muted" style="margin:2px 0 0; font-size:0.85rem;">Type question text, options A, B, C, D, and check the box/radio for the correct answer.</p>
+              </div>
+              <div class="row">
+                <span class="draft-badge" id="draft-indicator">💾 Auto-saved locally ✓</span>
+                <button type="button" class="btn btn-secondary" onclick="adminState.wizardStep='structure'; persistDraftToStorage(); renderWizardModal();">← Edit Structure</button>
+                <button type="button" class="btn btn-danger" style="padding:6px 12px; font-size:0.8rem;" onclick="discardDraft()">Discard</button>
+                <button type="button" class="btn btn-primary" onclick="saveAllWizardQuestions()">💾 Save & Publish Exam</button>
+              </div>
+            </div>
+
+            <!-- Subject Tabs -->
+            <div style="display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap;">
+              ${exam.subjects.map((sub, idx) => `
+                <div class="subject-pill ${idx === adminState.activeSubjectIndex ? 'active' : ''}" onclick="adminState.activeSubjectIndex=${idx}; persistDraftToStorage(); renderWizardModal();">
+                  ${escapeHtml(sub.subjectName)} (${(sub.questions || []).length} Questions)
+                </div>
+              `).join('')}
+            </div>
+
+            <!-- Question & Option Editors List -->
+            <div class="stack">
+              ${questions.map((q, qIndex) => renderQuestionFullEditor(q, qIndex)).join('')}
+            </div>
+
+            <div style="margin-top:24px; padding-top:16px; border-top:1px solid rgba(255,255,255,0.1); display:flex; justify-content:space-between; align-items:center;">
+              <span class="draft-badge">💾 All keystrokes auto-saved to device</span>
+              <div class="row">
+                <button type="button" class="btn btn-secondary" onclick="closeWizardModal()">Close</button>
+                <button type="button" class="btn btn-primary" onclick="saveAllWizardQuestions()">💾 Save All Questions to Cloud</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      function renderQuestionFullEditor(q, qIndex) {
+        const isMulti = q.questionType === 'MULTI_CORRECT';
+        const isInteger = q.questionType === 'INTEGER';
+        const options = q.options && q.options.length ? q.options : [
+          { id: 'A', label: '' }, { id: 'B', label: '' }, { id: 'C', label: '' }, { id: 'D', label: '' }
+        ];
+
+        return `
+          <div class="q-card-editor">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+              <div class="row">
+                <span class="badge" style="background:#5ec8ff; color:#000; font-weight:bold; font-size:0.9rem;">Q${q.questionNumber}</span>
+                <span class="badge">${escapeHtml(q.subSectionName || 'Section')}</span>
+                <span class="badge" style="color:var(--accent); font-weight:bold;">${escapeHtml(q.questionType)}</span>
+                <span class="badge">+${q.fullMarks} / ${q.wrongMarks} ${isMulti ? `(Partial: +${q.partialMarks || 1})` : ''}</span>
+              </div>
+            </div>
+
+            <!-- Question Statement Textarea -->
+            <div class="field" style="margin-bottom:12px;">
+              <label style="font-weight:600; font-size:0.85rem;">Question Statement</label>
+              <textarea class="textarea" style="min-height:65px; font-size:0.95rem;" placeholder="Type or paste the full question statement here..." oninput="updateQFieldDirect(${qIndex}, 'questionText', this.value)">${escapeHtml(q.questionText || '')}</textarea>
+            </div>
+
+            <!-- Diagram URL -->
+            <div class="field" style="margin-bottom:14px;">
+              <label style="font-size:0.8rem; color:#8ea0bf;">Optional Diagram / Image URL</label>
+              <input type="url" class="input" style="font-size:0.85rem;" placeholder="https://example.com/diagram.png" value="${escapeAttribute(q.imageUrl || '')}" oninput="updateQFieldDirect(${qIndex}, 'imageUrl', this.value)" />
+            </div>
+
+            <!-- Options or Integer Answer -->
+            ${isInteger ? `
+              <div class="field">
+                <label style="font-weight:600; font-size:0.85rem; color:#5de29b;">Correct Numerical Value Answer</label>
+                <input type="text" class="input" style="width:200px; font-weight:bold; font-size:1rem;" value="${escapeAttribute(q.correctAnswer || '')}" oninput="updateQFieldDirect(${qIndex}, 'correctAnswer', this.value)" placeholder="e.g. 24 or 3.14" />
+              </div>
+            ` : `
+              <div class="stack">
+                <label style="font-weight:600; font-size:0.85rem;">Options & Correct Answer Selection</label>
+                ${options.map((opt, optIdx) => {
+                  const isChecked = isMulti 
+                    ? String(q.correctAnswer || '').toUpperCase().includes(opt.id)
+                    : String(q.correctAnswer || '').trim().toUpperCase() === opt.id;
+
+                  return `
+                    <div class="opt-editor-row">
+                      <input type="${isMulti ? 'checkbox' : 'radio'}" name="correct_opt_${qIndex}" class="correct-check" ${isChecked ? 'checked' : ''} onchange="setQuestionCorrectOption(${qIndex}, '${opt.id}', ${isMulti})" title="Click to mark this option as correct" />
+                      <div class="opt-letter-badge">${opt.id}</div>
+                      <input type="text" class="input" style="font-size:0.9rem;" value="${escapeAttribute(opt.label || '')}" placeholder="Option ${opt.id} text (optional)" oninput="updateOptionLabel(${qIndex}, ${optIdx}, this.value)" />
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            `}
+          </div>
+        `;
+      }
+
+      function updateQFieldDirect(qIndex, field, val) {
+        const sub = adminState.editingExam.subjects[adminState.activeSubjectIndex];
+        sub.questions[qIndex][field] = val;
+        persistDraftToStorage();
+      }
+
+      function updateOptionLabel(qIndex, optIdx, val) {
+        const sub = adminState.editingExam.subjects[adminState.activeSubjectIndex];
+        if (!sub.questions[qIndex].options) {
+          sub.questions[qIndex].options = [{ id: 'A', label: '' }, { id: 'B', label: '' }, { id: 'C', label: '' }, { id: 'D', label: '' }];
+        }
+        sub.questions[qIndex].options[optIdx].label = val;
+        persistDraftToStorage();
+      }
+
+      function setQuestionCorrectOption(qIndex, optId, isMulti) {
+        const sub = adminState.editingExam.subjects[adminState.activeSubjectIndex];
+        const q = sub.questions[qIndex];
+        if (isMulti) {
+          let cur = String(q.correctAnswer || '').split('').filter(c => c.match(/[A-Z]/));
+          const idx = cur.indexOf(optId);
+          if (idx > -1) cur.splice(idx, 1);
+          else cur.push(optId);
+          q.correctAnswer = cur.sort().join('');
+        } else {
+          q.correctAnswer = optId;
+        }
+        persistDraftToStorage();
+      }
+
+      function closeWizardModal() {
+        document.getElementById('builderModal').style.display = 'none';
+      }
+
+      async function saveAllWizardQuestions() {
+        const exam = adminState.editingExam;
+        if (!exam.examName || !exam.examDate) {
+          alert('Exam Name and Date are required.');
+          return;
+        }
+        try {
+          await callAdmin('saveExam', { token: adminState.token, data: exam });
+          localStorage.removeItem(DRAFT_STORAGE_KEY);
+          adminState.editingExam = null;
+          closeWizardModal();
+          alert('✅ Exam & all questions/options saved to cloud successfully!');
+          await hydrateAdmin();
+        } catch (e) {
+          alert('Error saving exam: ' + e.message);
+        }
+      }
+
+      // ==========================================
+      // SIMPLE YET COMPELLING HEATMAP ANALYTICS
+      // ==========================================
+      function renderAnalytics() {
+        const data = adminState.analytics || { summary: {}, classAverageScore: 0, sectionWiseReports: [], attempts: [] };
+        const classAvg = Number(data.classAverageScore || 0);
+        const sectionReports = data.sectionWiseReports || [];
+        const attempts = data.attempts || [];
+
+        return `
+          <div class="panel" style="margin-bottom:16px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+              <div>
+                <h3 style="margin:0;">🎯 Exam Performance Analytics</h3>
+                <p class="muted" style="margin:4px 0 0; font-size:0.85rem;">Select an exam to instantly view rank-wise student performance with dynamic color heatmap.</p>
+              </div>
+              <div class="row">
+                <label style="font-size:0.85rem; font-weight:600;">Select Exam:</label>
+                <select id="analyticsExamSelect" class="select" style="min-width:240px; font-weight:bold;" onchange="onExamSelectChange(this.value)">
+                  <option value="">-- Choose Exam --</option>
+                  ${(adminState.exams || []).map((exam) => `
+                    <option value="${escapeAttribute(exam.examId)}" ${adminState.selectedAnalyticsExamId === exam.examId ? 'selected' : ''}>
+                      ${escapeHtml(exam.examName)}
+                    </option>
+                  `).join('')}
+                </select>
+                <button type="button" class="btn btn-secondary" onclick="downloadAnalyticsCsv()">Export Excel CSV</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Class Average KPI Bar -->
+          <div class="grid cards-3" style="margin-bottom:16px;">
+            <div class="card kpi">
+              <span class="muted">Class Average Score</span>
+              <strong style="color:var(--accent); font-size:1.8rem;">${classAvg.toFixed(2)}</strong>
+            </div>
+            <div class="card kpi">
+              <span class="muted">Total Submissions</span>
+              <strong style="font-size:1.8rem;">${attempts.length}</strong>
+            </div>
+            <div class="card kpi">
+              <span class="muted">Color Legend</span>
+              <div style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap;">
+                <span class="rank-tag-green">Top 3</span>
+                <span class="rank-tag-yellow">Above Avg</span>
+                <span class="rank-tag-red">Below Avg</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section-Wise and Sub-Section-Wise Average Scores -->
+          <div class="panel" style="margin-bottom:16px;">
+            <h3 style="margin-top:0; font-size:1.05rem; color:var(--accent);">📚 Section & Sub-Section Performance Averages</h3>
+            <div class="grid cards-3" style="margin-top:12px;">
+              ${sectionReports.length ? sectionReports.map(sec => `
+                <div class="card" style="background:rgba(255,255,255,0.02); border-color:rgba(145,179,255,0.15);">
+                  <strong style="font-size:0.95rem;">${escapeHtml(sec.sectionTitle)}</strong>
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
+                    <span class="muted">Avg Score:</span>
+                    <strong style="color:var(--accent); font-size:1.1rem;">${Number(sec.averageScore || 0).toFixed(2)}</strong>
+                  </div>
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
+                    <span class="muted">Accuracy:</span>
+                    <span class="pill-success">${Number(sec.accuracyPercent || 0).toFixed(1)}%</span>
+                  </div>
+                  <div class="muted" style="font-size:0.75rem; margin-top:6px;">
+                    Correct: ${sec.totalCorrect} · Partial: ${sec.totalPartial || 0} · Wrong: ${sec.totalWrong}
+                  </div>
+                </div>
+              `).join('') : '<div class="empty">Select an exam above to view section averages.</div>'}
+            </div>
+          </div>
+
+          <!-- Rank-Wise Student Performance Table with Dynamic Heatmap -->
+          <div class="panel">
+            <h3 style="margin-top:0; margin-bottom:12px; font-size:1.05rem;">📋 Student Ranking Table (Color Intensity Heatmap)</h3>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th style="width:70px;">Rank</th>
+                    <th>Performance Tag</th>
+                    <th>Student Name</th>
+                    <th>Admission #</th>
+                    <th>Class</th>
+                    <th>Score Obtained</th>
+                    <th>Difference vs Class Avg (${classAvg.toFixed(1)})</th>
+                    <th>Time Taken</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${attempts.length ? attempts.map(att => {
+                    let rowBg = '';
+                    let badgeHtml = '';
+                    const diff = att.marks - classAvg;
+
+                    if (att.performanceCategory === 'TOP_3') {
+                      rowBg = 'background: rgba(16, 185, 129, 0.12);';
+                      badgeHtml = `<span class="rank-tag-green">${att.badgeText}</span>`;
+                    } else if (att.performanceCategory === 'ABOVE_AVERAGE') {
+                      rowBg = 'background: rgba(245, 158, 11, 0.08);';
+                      badgeHtml = `<span class="rank-tag-yellow">${att.badgeText}</span>`;
+                    } else {
+                      const intensity = att.redIntensity || 0.25;
+                      rowBg = `background: rgba(239, 68, 68, ${intensity});`;
+                      badgeHtml = `<span class="rank-tag-red" style="background: rgba(239, 68, 68, ${Math.min(1, intensity + 0.3)});">${att.badgeText}</span>`;
+                    }
+
+                    return `
+                      <tr style="${rowBg}">
+                        <td><strong>#${att.rank}</strong></td>
+                        <td>${badgeHtml}</td>
+                        <td><strong>${escapeHtml(att.studentName)}</strong></td>
+                        <td>${escapeHtml(att.admissionNumber)}</td>
+                        <td>${escapeHtml(att.className)}</td>
+                        <td><strong style="font-size:1.15rem;">${Number(att.marks || 0).toFixed(2)}</strong></td>
+                        <td>
+                          <span style="font-weight:bold; color:${diff >= 0 ? '#10b981' : '#ef4444'};">
+                            ${diff >= 0 ? `+${diff.toFixed(2)}` : diff.toFixed(2)}
+                          </span>
+                        </td>
+                        <td>${escapeHtml(formatSeconds(att.timeTakenSeconds))}</td>
+                      </tr>
+                    `;
+                  }).join('') : '<tr><td colspan="8" class="empty">Please select an exam with submissions to view analytics.</td></tr>'}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `;
+      }
+
+      async function onExamSelectChange(examId) {
+        adminState.selectedAnalyticsExamId = examId;
+        if (!examId) {
+          adminState.analytics = null;
+          renderAdmin();
+          return;
+        }
+        const analytics = await callAdmin('getAnalytics', { token: adminState.token, filters: { examId } });
+        adminState.analytics = analytics;
+        renderAdmin();
+      }
+
+      function formatSeconds(secs) {
+        if (!secs) return '—';
+        const m = Math.floor(secs / 60);
+        const s = secs % 60;
+        return `${m}m ${s}s`;
       }
 
       function renderStudents() {
@@ -199,8 +881,8 @@
             <div class="toolbar" style="margin-bottom:16px;">
               <h3 style="margin:0;">Student Master Directory</h3>
               <div class="row">
-                <button class="btn btn-primary" onclick="openStudentDrawer()">Add Student</button>
-                <button class="btn btn-secondary" onclick="downloadStudentTemplate()">Template CSV</button>
+                <button type="button" class="btn btn-primary" onclick="openStudentDrawer()">Add Student</button>
+                <button type="button" class="btn btn-secondary" onclick="downloadStudentTemplate()">Template CSV</button>
               </div>
             </div>
             <div class="table-wrap">
@@ -223,7 +905,7 @@
                       <td>${escapeHtml(student.admissionNumber)}</td>
                       <td>${escapeHtml(student.className)}</td>
                       <td><span class="badge">${escapeHtml(student.status)}</span></td>
-                      <td><button class="btn btn-secondary" onclick="openStudentDrawerById('${escapeJs(student.studentId)}')">Edit</button></td>
+                      <td><button type="button" class="btn btn-secondary" onclick="openStudentDrawerById('${escapeJs(student.studentId)}')">Edit</button></td>
                     </tr>
                   `).join('')}
                 </tbody>
@@ -237,8 +919,8 @@
         return `
           <div class="panel">
             <div class="toolbar" style="margin-bottom:16px;">
-              <h3 style="margin:0;">Classes & Grades</h3>
-              <button class="btn btn-primary" onclick="openClassDrawer()">Add Class</button>
+              <h3 style="margin:0;">Classes</h3>
+              <button type="button" class="btn btn-primary" onclick="openClassDrawer()">Add Class</button>
             </div>
             <div class="table-wrap">
               <table>
@@ -258,7 +940,7 @@
                         <td><strong>${escapeHtml(item.className)}</strong></td>
                         <td>${count} students</td>
                         <td><span class="badge">${escapeHtml(item.status)}</span></td>
-                        <td><button class="btn btn-secondary" onclick="openClassDrawerById('${escapeJs(item.classSectionId)}')">Edit</button></td>
+                        <td><button type="button" class="btn btn-secondary" onclick="openClassDrawerById('${escapeJs(item.classSectionId)}')">Edit</button></td>
                       </tr>
                     `;
                   }).join('')}
@@ -269,180 +951,68 @@
         `;
       }
 
-      function renderExams() {
-        return `
-          <div class="panel">
-            <div class="toolbar" style="margin-bottom:16px;">
-              <h3 style="margin:0;">Exam Management & Live Window Scheduling</h3>
-              <button class="btn btn-primary" onclick="openExamDrawer()">Create & Schedule Exam</button>
+      async function openExamSettingsDrawer(examId) {
+        const exam = await callAdmin('getExamDetail', { token: adminState.token, examId });
+        const startVal = exam.availabilityStart ? exam.availabilityStart.slice(0, 16) : '';
+        const endVal = exam.availabilityEnd ? exam.availabilityEnd.slice(0, 16) : '';
+
+        openDrawer(`
+          <div class="stack">
+            <h3 style="margin:0;">Exam Settings: ${escapeHtml(exam.examName)}</h3>
+            ${renderField('Exam Name', 'settingExamName', exam.examName || '')}
+            ${renderField('Exam Date', 'settingExamDate', exam.examDate || '', 'date')}
+            
+            <div class="panel" style="background:rgba(255,255,255,0.03); border:1px solid rgba(145,179,255,0.2);">
+              <h4 style="margin:0 0 8px; color:var(--accent);">🕒 Timed Window & Duration Settings</h4>
+              <p class="muted" style="margin:0 0 12px; font-size:0.85rem;">
+                Students can start between <strong>Live Start</strong> and <strong>Entry Cutoff</strong>. Each student gets their full allocated <strong>Duration</strong> from their exact start time.
+              </p>
+              ${renderField('Exam Live Start Time (e.g. 07:00 AM)', 'settingAvailabilityStart', startVal, 'datetime-local')}
+              ${renderField('Exam Entry Cutoff Time (e.g. 07:30 AM)', 'settingAvailabilityEnd', endVal, 'datetime-local')}
+              ${renderField('Duration Per Student (Minutes)', 'settingDurationMinutes', exam.durationMinutes || 90, 'number')}
             </div>
-            <div class="list">
-              ${(adminState.exams || []).map((exam) => `
-                <div class="exam-card">
-                  <div class="stack">
-                    <div class="row">
-                      <strong style="font-size:1.1rem;">${escapeHtml(exam.examName)}</strong>
-                      <span class="badge">${escapeHtml(exam.status)}</span>
-                      <span class="badge">${escapeHtml(exam.mode)}</span>
-                    </div>
-                    <div class="muted">
-                      📅 Date: ${escapeHtml(exam.examDate)} · ⏱️ Duration: ${escapeHtml(exam.durationMinutes)} min 
-                      ${exam.availabilityStart ? `· 🟢 Live From: ${new Date(exam.availabilityStart).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}` : ''}
-                      ${exam.availabilityEnd ? `· 🛑 Entry Cutoff: ${new Date(exam.availabilityEnd).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}` : ''}
-                      · 👥 Assigned: ${escapeHtml(exam.assignedStudentCount || 0)} students
-                    </div>
-                  </div>
-                  <div class="row">
-                    <button class="btn btn-secondary" onclick="openExamDrawerById('${escapeJs(exam.examId)}')">Edit & Blueprint</button>
-                    <button class="btn btn-secondary" onclick="setExamStatus('${exam.examId}', 'PUBLISHED')">Publish</button>
-                    <button class="btn btn-secondary" onclick="duplicateExam('${exam.examId}')">Duplicate</button>
-                    <button class="btn btn-danger" onclick="removeExam('${exam.examId}')">Delete</button>
-                  </div>
-                </div>
-              `).join('')}
+
+            ${renderOptionField('Exam Mode', 'settingMode', exam.mode || 'FULL_ONLINE_EXAM', EXAM_MODE_OPTIONS)}
+            ${renderOptionField('Result Publication', 'settingResultMode', exam.resultMode || 'IMMEDIATE', RESULT_MODE_OPTIONS)}
+            ${renderSelectField('Exam Status', 'settingExamStatus', exam.status || 'PUBLISHED', EXAM_STATUS_OPTIONS)}
+            ${renderField('Assigned Student IDs (Leave empty for ALL students)', 'settingAssignedIds', (exam.assignedStudentIds || []).join(',') || '')}
+
+            <div class="row">
+              <button type="button" class="btn btn-primary" onclick="saveExamSettings('${escapeJs(exam.examId)}')">Save Settings</button>
+              <button type="button" class="btn btn-secondary" onclick="closeDrawer()">Cancel</button>
             </div>
           </div>
-        `;
+        `);
       }
 
-      function renderAnalytics() {
-        const data = adminState.analytics || { summary: {}, schoolReport: {}, classWiseReports: [], attempts: [] };
-        const summary = data.summary || {};
-        const school = data.schoolReport || {};
-        const classReports = data.classWiseReports || [];
-        const top3 = summary.top3Rankers || [];
+      async function saveExamSettings(examId) {
+        const existing = await callAdmin('getExamDetail', { token: adminState.token, examId });
+        let assigned = document.getElementById('settingAssignedIds').value.split(',').map((item) => item.trim()).filter(Boolean);
+        if (!assigned.length) {
+          assigned = (adminState.students || []).filter(s => s.status === 'ACTIVE').map(s => s.studentId);
+        }
 
-        return `
-          <!-- School-Wide High Level Metrics -->
-          <div class="hero hero-grid">
-            <div class="stack">
-              <span class="badge">School-Wide Exam Performance</span>
-              <h2 style="margin:8px 0 0;">Analytics & Batch Insights</h2>
-              <p class="muted">Class averages, whole school overview, and top ranker highlights.</p>
-            </div>
-            <div class="grid cards-2">
-              <div class="card kpi"><span class="muted">Whole School Average</span><strong>${Number(summary.averageScore || 0).toFixed(2)}</strong></div>
-              <div class="card kpi"><span class="muted">Total Submissions</span><strong>${summary.submittedStudents || 0} / ${summary.totalAssignedStudents || 0}</strong></div>
-            </div>
-          </div>
-
-          <!-- Top 3 Best Rankers Showcase -->
-          <div class="panel" style="border-color: rgba(255, 215, 0, 0.3);">
-            <h3 style="margin-top:0; color:#ffd700;">🏆 Top 3 Rankers (Best Performers)</h3>
-            <div class="grid cards-3">
-              ${top3.length ? top3.map((ranker, i) => `
-                <div class="podium-card ${i === 0 ? 'gold' : i === 1 ? 'silver' : 'bronze'}">
-                  <div class="stack">
-                    <div class="row">
-                      <span class="rank-badge-${ranker.rank}">${ranker.topRankBadge}</span>
-                      <strong style="font-size:1.15rem; color:#fff;">${Number(ranker.marks || 0).toFixed(2)} pts</strong>
-                    </div>
-                    <strong style="font-size:1.1rem;">${escapeHtml(ranker.studentName)}</strong>
-                    <span class="muted">Class: ${escapeHtml(ranker.className)} · Time: ${escapeHtml(formatSeconds(ranker.timeTakenSeconds))}</span>
-                  </div>
-                </div>
-              `).join('') : '<div class="empty">No ranked submissions yet. Once students submit, top 3 rankers will be highlighted here.</div>'}
-            </div>
-          </div>
-
-          <!-- Class-Wise Performance Report Table -->
-          <div class="panel">
-            <div class="toolbar" style="margin-bottom:16px;">
-              <h3 style="margin:0;">📊 Class-Wise Performance Report</h3>
-            </div>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Class Name</th>
-                    <th>Enrolled</th>
-                    <th>Attempts</th>
-                    <th>Submissions</th>
-                    <th>Class Average</th>
-                    <th>Highest Score</th>
-                    <th>Lowest Score</th>
-                    <th>Class Topper</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${classReports.length ? classReports.map((c) => `
-                    <tr>
-                      <td><strong>${escapeHtml(c.className)}</strong></td>
-                      <td>${c.totalEnrolled}</td>
-                      <td>${c.totalAttempts}</td>
-                      <td>${c.submitted}</td>
-                      <td><strong style="color:var(--accent);">${Number(c.averageScore || 0).toFixed(2)}</strong></td>
-                      <td><span class="pill-success">${Number(c.highestScore || 0).toFixed(2)}</span></td>
-                      <td><span class="pill-danger">${Number(c.lowestScore || 0).toFixed(2)}</span></td>
-                      <td><strong>${escapeHtml(c.topStudent)}</strong></td>
-                    </tr>
-                  `).join('') : '<tr><td colspan="8" class="empty">No class data found.</td></tr>'}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <!-- Individual Attempts Master Log with Filter & Excel CSV Export -->
-          <div class="panel">
-            <div class="toolbar" style="margin-bottom:16px;">
-              <h3 style="margin:0;">📋 Student Submissions & Rankings</h3>
-              <div class="row">
-                <select id="analyticsExamId" class="select" style="min-width:180px;">
-                  <option value="">All Exams</option>
-                  ${(adminState.exams || []).map((exam) => `<option value="${escapeAttribute(exam.examId)}">${escapeHtml(exam.examName)}</option>`).join('')}
-                </select>
-                <select id="analyticsClassName" class="select" style="min-width:140px;">
-                  <option value="">All Classes</option>
-                  ${(adminState.classes || []).map((c) => `<option value="${escapeAttribute(c.className)}">${escapeHtml(c.className)}</option>`).join('')}
-                </select>
-                <button class="btn btn-primary" onclick="loadAnalytics()">Filter</button>
-                <button class="btn btn-secondary" onclick="downloadAnalyticsCsv()">Export Excel CSV (with Top 3 Tagged)</button>
-              </div>
-            </div>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Rank</th>
-                    <th>Student Name</th>
-                    <th>Class</th>
-                    <th>Score</th>
-                    <th>Status</th>
-                    <th>Submitted At</th>
-                    <th>Time Taken</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${data.attempts && data.attempts.length ? data.attempts.map((attempt) => `
-                    <tr style="${attempt.isTop3 ? 'background: rgba(255, 215, 0, 0.05); font-weight: 500;' : ''}">
-                      <td>
-                        ${attempt.isTop3 ? `<span class="rank-badge-${attempt.rank}">${attempt.topRankBadge}</span>` : `#${attempt.rank}`}
-                      </td>
-                      <td><strong>${escapeHtml(attempt.studentName)}</strong></td>
-                      <td>${escapeHtml(attempt.className)}</td>
-                      <td><strong style="font-size:1.05rem;">${Number(attempt.marks || 0).toFixed(2)}</strong></td>
-                      <td><span class="badge">${escapeHtml(attempt.status)}</span></td>
-                      <td>${escapeHtml(attempt.submittedAt ? new Date(attempt.submittedAt).toLocaleTimeString() : 'In Progress')}</td>
-                      <td>${escapeHtml(formatSeconds(attempt.timeTakenSeconds))}</td>
-                    </tr>
-                  `).join('') : '<tr><td colspan="7" class="empty">No student attempts found.</td></tr>'}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        `;
-      }
-
-      function formatSeconds(secs) {
-        if (!secs) return '—';
-        const m = Math.floor(secs / 60);
-        const s = secs % 60;
-        return `${m}m ${s}s`;
+        const payload = {
+          ...existing,
+          examName: document.getElementById('settingExamName').value.trim(),
+          examDate: document.getElementById('settingExamDate').value,
+          durationMinutes: Number(document.getElementById('settingDurationMinutes').value) || 90,
+          availabilityStart: document.getElementById('settingAvailabilityStart').value ? new Date(document.getElementById('settingAvailabilityStart').value).toISOString() : '',
+          availabilityEnd: document.getElementById('settingAvailabilityEnd').value ? new Date(document.getElementById('settingAvailabilityEnd').value).toISOString() : '',
+          mode: document.getElementById('settingMode').value.trim(),
+          resultMode: document.getElementById('settingResultMode').value.trim(),
+          status: document.getElementById('settingExamStatus').value.trim(),
+          assignedStudentIds: assigned
+        };
+        await callAdmin('saveExam', { token: adminState.token, data: payload });
+        closeDrawer();
+        await hydrateAdmin();
       }
 
       async function loginAdmin() {
         const password = document.getElementById('adminPassword').value;
         const result = await callAdmin('adminLogin', { password });
+        localStorage.setItem(TOKEN_STORAGE_KEY, result.token);
         sessionStorage.setItem('adminToken', result.token);
         adminState.token = result.token;
         await hydrateAdmin();
@@ -452,6 +1022,7 @@
         try {
           await callAdmin('adminLogout', { token: adminState.token });
         } finally {
+          localStorage.removeItem(TOKEN_STORAGE_KEY);
           sessionStorage.removeItem('adminToken');
           setAdminState({ token: '', dashboard: null, analytics: null, students: [], exams: [], classes: [] });
         }
@@ -492,8 +1063,8 @@
             ${renderField('Class (e.g. Class 10, Grade 12)', 'className', item.className || '')}
             ${renderSelectField('Status', 'status', item.status || 'ACTIVE', SIMPLE_STATUS_OPTIONS)}
             <div class="row">
-              <button class="btn btn-primary" onclick="saveStudentForm('${escapeJs(item.studentId || '')}')">Save Student</button>
-              <button class="btn btn-secondary" onclick="closeDrawer()">Cancel</button>
+              <button type="button" class="btn btn-primary" onclick="saveStudentForm('${escapeJs(item.studentId || '')}')">Save Student</button>
+              <button type="button" class="btn btn-secondary" onclick="closeDrawer()">Cancel</button>
             </div>
           </div>
         `);
@@ -511,75 +1082,18 @@
             ${renderField('Class Name (e.g. Class 10, Grade 12)', 'classSectionClassName', item.className || '')}
             ${renderSelectField('Status', 'classSectionStatus', item.status || 'ACTIVE', SIMPLE_STATUS_OPTIONS)}
             <div class="row">
-              <button class="btn btn-primary" onclick="saveClassForm('${escapeJs(item.classSectionId || '')}')">Save</button>
-              <button class="btn btn-secondary" onclick="closeDrawer()">Cancel</button>
+              <button type="button" class="btn btn-primary" onclick="saveClassForm('${escapeJs(item.classSectionId || '')}')">Save</button>
+              <button type="button" class="btn btn-secondary" onclick="closeDrawer()">Cancel</button>
             </div>
           </div>
         `);
       }
 
-      async function openExamDrawerById(examId) {
-        const exam = await callAdmin('getExamDetail', { token: adminState.token, examId });
-        openExamDrawer(exam);
-      }
-
-      function openExamDrawer(exam) {
-        exam = exam || {};
-        const defaultQuestions = [
-          { questionNumber: 1, questionType: 'SINGLE_CORRECT', questionText: 'Sample Question 1', options: [{ id: 'A', label: 'Option A' }, { id: 'B', label: 'Option B' }, { id: 'C', label: 'Option C' }, { id: 'D', label: 'Option D' }], correctAnswer: 'A', fullMarks: 4, partialMarks: 0, wrongMarks: -1 }
-        ];
-
-        // Format dates for datetime-local
-        const startVal = exam.availabilityStart ? exam.availabilityStart.slice(0, 16) : '';
-        const endVal = exam.availabilityEnd ? exam.availabilityEnd.slice(0, 16) : '';
-
-        openDrawer(`
-          <div class="stack">
-            <h3 style="margin:0;">${exam.examId ? 'Edit Exam & Timing' : 'Create & Schedule Exam'}</h3>
-            ${renderField('Exam Name', 'examName', exam.examName || '')}
-            ${renderField('Exam Date', 'examDate', exam.examDate || new Date().toISOString().split('T')[0], 'date')}
-            
-            <div class="panel" style="background:rgba(255,255,255,0.03); border:1px solid rgba(145,179,255,0.2);">
-              <h4 style="margin:0 0 8px; color:var(--accent);">🕒 Timed Window & Duration Settings</h4>
-              <p class="muted" style="margin:0 0 12px; font-size:0.85rem;">
-                Students can start anytime between <strong>Live Start</strong> and <strong>Entry Cutoff</strong>. Once started, each student gets their full allocated <strong>Duration</strong> from their exact start time.
-              </p>
-              ${renderField('Exam Live Start Time (e.g. 07:00 AM)', 'availabilityStart', startVal, 'datetime-local')}
-              ${renderField('Exam Entry Cutoff Time (e.g. 07:30 AM - entry closes after this)', 'availabilityEnd', endVal, 'datetime-local')}
-              ${renderField('Duration Per Student (Minutes, e.g. 90)', 'durationMinutes', exam.durationMinutes || 90, 'number')}
-            </div>
-
-            ${renderOptionField('Exam Mode', 'mode', exam.mode || 'FULL_ONLINE_EXAM', EXAM_MODE_OPTIONS)}
-            ${renderOptionField('Result Publication', 'resultMode', exam.resultMode || 'IMMEDIATE', RESULT_MODE_OPTIONS)}
-            ${renderSelectField('Exam Status', 'examStatus', exam.status || 'PUBLISHED', EXAM_STATUS_OPTIONS)}
-            ${renderField('Assigned Student IDs (Leave empty to automatically assign to ALL active students)', 'assignedStudentIds', (exam.assignedStudentIds || []).join(',') || '')}
-            
-            <div class="field">
-              <label>Exam Blueprint (Subjects, Patterns & Questions JSON)</label>
-              <textarea id="examBlueprint" class="textarea" style="min-height:180px;">${escapeHtml(JSON.stringify({
-                subjects: exam.subjects && exam.subjects.length ? exam.subjects : [
-                  {
-                    subjectName: 'General',
-                    patterns: [{ questionType: 'SINGLE_CORRECT', numberOfQuestions: 1, fullMarks: 4, partialMarks: 0, wrongMarks: -1 }],
-                    questions: defaultQuestions
-                  }
-                ],
-                rankingPriority: []
-              }, null, 2))}</textarea>
-            </div>
-            <div class="row">
-              <button class="btn btn-primary" onclick="saveExamForm('${escapeJs(exam.examId || '')}')">Save & Schedule Exam</button>
-              <button class="btn btn-secondary" onclick="closeDrawer()">Cancel</button>
-            </div>
-          </div>
-        `);
-      }
-
-      function renderField(label, id, value, type) {
+      function renderField(label, id, value, type, oninput) {
         return `
           <div class="field">
             <label>${label}</label>
-            <input id="${id}" class="input" type="${type || 'text'}" value="${escapeAttribute(value)}" />
+            <input id="${id}" class="input" type="${type || 'text'}" value="${escapeAttribute(value)}" ${oninput ? `oninput="${oninput}"` : ''} />
           </div>
         `;
       }
@@ -635,35 +1149,6 @@
         await hydrateAdmin();
       }
 
-      async function saveExamForm(examId) {
-        const blueprint = parseJson(document.getElementById('examBlueprint').value, null);
-        if (!blueprint) {
-          setAdminState({ error: 'Exam blueprint JSON is invalid.' });
-          return;
-        }
-        let assigned = document.getElementById('assignedStudentIds').value.split(',').map((item) => item.trim()).filter(Boolean);
-        if (!assigned.length) {
-          assigned = (adminState.students || []).filter(s => s.status === 'ACTIVE').map(s => s.studentId);
-        }
-        const payload = {
-          examId: examId || '',
-          examName: document.getElementById('examName').value.trim(),
-          examDate: document.getElementById('examDate').value,
-          durationMinutes: Number(document.getElementById('durationMinutes').value) || 90,
-          availabilityStart: document.getElementById('availabilityStart').value ? new Date(document.getElementById('availabilityStart').value).toISOString() : '',
-          availabilityEnd: document.getElementById('availabilityEnd').value ? new Date(document.getElementById('availabilityEnd').value).toISOString() : '',
-          mode: document.getElementById('mode').value.trim(),
-          resultMode: document.getElementById('resultMode').value.trim(),
-          status: document.getElementById('examStatus').value.trim(),
-          assignedStudentIds: assigned,
-          subjects: blueprint.subjects || [],
-          rankingPriority: blueprint.rankingPriority || []
-        };
-        await callAdmin('saveExam', { token: adminState.token, data: payload });
-        closeDrawer();
-        await hydrateAdmin();
-      }
-
       async function setExamStatus(examId, status) {
         await callAdmin('updateExamStatus', { token: adminState.token, examId, status });
         await hydrateAdmin();
@@ -680,23 +1165,15 @@
         await hydrateAdmin();
       }
 
-      async function loadAnalytics() {
-        const examId = document.getElementById('analyticsExamId') ? document.getElementById('analyticsExamId').value : '';
-        const className = document.getElementById('analyticsClassName') ? document.getElementById('analyticsClassName').value : '';
-        const analytics = await callAdmin('getAnalytics', { token: adminState.token, filters: { examId, className } });
-        setAdminState({ analytics });
-      }
-
       async function downloadStudentTemplate() {
         const csv = await callAdmin('getStudentTemplateCsv', { token: adminState.token });
         downloadFile('student-template.csv', csv);
       }
 
       async function downloadAnalyticsCsv() {
-        const examId = document.getElementById('analyticsExamId') ? document.getElementById('analyticsExamId').value : '';
-        const className = document.getElementById('analyticsClassName') ? document.getElementById('analyticsClassName').value : '';
-        const csv = await callAdmin('exportCsv', { token: adminState.token, type: 'analytics', filters: { examId, className } });
-        downloadFile('exam-analytics-report.csv', csv);
+        const examId = adminState.selectedAnalyticsExamId;
+        const csv = await callAdmin('exportCsv', { token: adminState.token, type: 'analytics', filters: { examId } });
+        downloadFile('exam-analytics-heatmap.csv', csv);
       }
 
       function openDrawer(content) {
@@ -720,10 +1197,6 @@
         URL.revokeObjectURL(url);
       }
 
-      function parseJson(text, fallback) {
-        try { return text ? JSON.parse(text) : fallback; } catch (e) { return fallback; }
-      }
-
       function escapeJs(text) {
         return String(text === undefined || text === null ? '' : text).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
       }
@@ -745,10 +1218,19 @@
 
       function escapeAttribute(text) { return escapeHtml(text); }
 
+      // Boot application & restore any working draft
       renderAdmin();
       if (adminState.token) {
         hydrateAdmin().catch(() => {});
       }
+      restoreDraftFromStorage();
+
+      window.addEventListener('beforeunload', (e) => {
+        if (adminState.editingExam) {
+          e.preventDefault();
+          e.returnValue = 'You have an exam paper draft in progress. Your changes are auto-saved locally.';
+        }
+      });
     </script>
   </body>
 </html>
