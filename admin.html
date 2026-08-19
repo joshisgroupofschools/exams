@@ -619,11 +619,13 @@
       function renderQuestionsStep(exam) {
         const currentSubject = exam.subjects[adminState.activeSubjectIndex] || exam.subjects[0];
         const subSections = (currentSubject && currentSubject.subSections) || [];
-        const activeSubSec = subSections[adminState.activeSubSecIndex] || subSections[0] || { name: 'Section 1', type: 'SINGLE_CORRECT' };
+        const isWholeSubjectTab = adminState.activeSubSecIndex === -1;
+        const activeSubSec = !isWholeSubjectTab ? (subSections[adminState.activeSubSecIndex] || subSections[0] || { name: 'Section 1', type: 'SINGLE_CORRECT' }) : null;
         
-        // Filter questions belonging to this active sub-section
         const allQuestionsInSubject = currentSubject ? (currentSubject.questions || []) : [];
-        const filteredQuestions = allQuestionsInSubject.filter(q => q.subSectionName === activeSubSec.name);
+        const filteredQuestions = isWholeSubjectTab 
+          ? allQuestionsInSubject 
+          : allQuestionsInSubject.filter(q => q.subSectionName === activeSubSec.name);
 
         const totalQ = exam.subjects.reduce((sum, s) => sum + (s.questions ? s.questions.length : 0), 0);
 
@@ -650,8 +652,8 @@
             <!-- Subject Navigation Tabs -->
             <div style="display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap;">
               ${exam.subjects.map((sub, idx) => `
-                <div class="subject-pill ${idx === adminState.activeSubjectIndex ? 'active' : ''}" onclick="adminState.activeSubjectIndex=${idx}; adminState.activeSubSecIndex=0; persistDraftToStorage(); renderWizardModal();">
-                  ${escapeHtml(sub.subjectName)} (${(sub.questions || []).length} Qs)
+                <div class="subject-pill ${idx === adminState.activeSubjectIndex ? 'active' : ''}" onclick="adminState.activeSubjectIndex=${idx}; adminState.activeSubSecIndex=-1; persistDraftToStorage(); renderWizardModal();">
+                  📚 ${escapeHtml(sub.subjectName)} (${(sub.questions || []).length} Qs)
                 </div>
               `).join('')}
             </div>
@@ -659,30 +661,49 @@
             <!-- Sub-Section Tabs within the Active Subject -->
             <div style="background:rgba(0,0,0,0.25); border:1px solid rgba(145,179,255,0.15); border-radius:14px; padding:14px; margin-bottom:18px;">
               <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
-                <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                  ${subSections.map((sec, secIdx) => `
-                    <div class="subsec-tab ${secIdx === adminState.activeSubSecIndex ? 'active' : ''}" onclick="adminState.activeSubSecIndex=${secIdx}; persistDraftToStorage(); renderWizardModal();">
-                      ${escapeHtml(sec.name)} · <span style="opacity:0.8;">${allQuestionsInSubject.filter(q => q.subSectionName === sec.name).length} Qs</span>
-                    </div>
-                  `).join('')}
+                <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                  <!-- Whole Subject Tab -->
+                  <div class="subsec-tab ${isWholeSubjectTab ? 'active' : ''}" style="${isWholeSubjectTab ? 'background:rgba(94,200,255,0.2); color:#5ec8ff; border-color:#5ec8ff;' : ''}" onclick="adminState.activeSubSecIndex=-1; persistDraftToStorage(); renderWizardModal();">
+                    📁 Whole Subject (All ${allQuestionsInSubject.length} Qs)
+                  </div>
+                  <!-- Individual Sub-Section Tabs -->
+                  ${subSections.map((sec, secIdx) => {
+                    const qCount = allQuestionsInSubject.filter(q => q.subSectionName === sec.name).length;
+                    return `
+                      <div class="subsec-tab ${secIdx === adminState.activeSubSecIndex ? 'active' : ''}" onclick="adminState.activeSubSecIndex=${secIdx}; persistDraftToStorage(); renderWizardModal();">
+                        ⚡ ${escapeHtml(sec.name)} · <span style="opacity:0.85;">${qCount} Qs</span>
+                      </div>
+                    `;
+                  }).join('')}
                 </div>
+                
                 <div class="row">
-                  <button type="button" class="btn btn-secondary" style="font-size:0.8rem; padding:6px 12px; background:rgba(94,200,255,0.15); border-color:#5ec8ff;" onclick="openBulkUploadModal()">
-                    📥 Bulk Upload Questions for this Sub-Section
+                  <button type="button" class="btn btn-primary" style="font-size:0.8rem; padding:6px 14px;" onclick="openBulkUploadModal('WHOLE_SUBJECT')">
+                    📥 Bulk Upload Whole Subject
                   </button>
-                  <button type="button" class="btn btn-secondary" style="font-size:0.8rem; padding:6px 12px;" onclick="downloadSubSectionCsvTemplate()">
-                    📄 Download CSV Template
+                  ${!isWholeSubjectTab ? `
+                    <button type="button" class="btn btn-secondary" style="font-size:0.8rem; padding:6px 12px; background:rgba(123,255,207,0.12); border-color:#7bffcf; color:#7bffcf;" onclick="openBulkUploadModal('SUB_SECTION')">
+                      📥 Bulk Upload This Sub-Section
+                    </button>
+                  ` : ''}
+                  <button type="button" class="btn btn-secondary" style="font-size:0.8rem; padding:6px 12px;" onclick="${isWholeSubjectTab ? 'downloadWholeSubjectCsvTemplate()' : 'downloadSubSectionCsvTemplate()'}">
+                    📄 Download ${isWholeSubjectTab ? 'Whole Subject' : 'Sub-Section'} CSV Template
                   </button>
                   <button type="button" class="btn btn-secondary" style="font-size:0.8rem; padding:6px 12px;" onclick="addNewQuestionToActiveSubSec()">
-                    + Add Single Question
+                    + Add Single Q
                   </button>
                 </div>
               </div>
 
               <!-- Active Sub-Section Info Badge -->
-              <div class="muted" style="font-size:0.85rem; display:flex; justify-content:space-between; align-items:center;">
-                <span>Type: <strong style="color:var(--accent);">${activeSubSec.type}</strong> · Scheme: <strong style="color:#10b981;">+${activeSubSec.fullMarks || 4} Full</strong> / <strong style="color:#ef4444;">${activeSubSec.wrongMarks || -1} Penalty</strong> ${activeSubSec.type === 'MULTI_CORRECT' ? `· <strong style="color:#f59e0b;">+${activeSubSec.partialMarks || 1} Partial</strong>` : ''}</span>
-                <span>Questions in this sub-section: <strong>${filteredQuestions.length}</strong></span>
+              <div class="muted" style="font-size:0.85rem; display:flex; justify-content:space-between; align-items:center; border-top:1px solid rgba(255,255,255,0.06); padding-top:10px;">
+                ${isWholeSubjectTab ? `
+                  <span>Viewing <strong>All Sub-Sections</strong> in <strong>${escapeHtml(currentSubject.subjectName)}</strong> (${subSections.length} sub-sections defined)</span>
+                  <span>Total questions in subject: <strong>${allQuestionsInSubject.length}</strong></span>
+                ` : `
+                  <span>Sub-Section: <strong>${escapeHtml(activeSubSec.name)}</strong> · Type: <strong style="color:var(--accent);">${activeSubSec.type}</strong> · Marks: <strong style="color:#10b981;">+${activeSubSec.fullMarks || 4}</strong> / <strong style="color:#ef4444;">${activeSubSec.wrongMarks || -1}</strong> ${activeSubSec.type === 'MULTI_CORRECT' ? `· <strong style="color:#f59e0b;">+${activeSubSec.partialMarks || 1} Partial</strong>` : ''}</span>
+                  <span>Questions in this sub-section: <strong>${filteredQuestions.length}</strong></span>
+                `}
               </div>
             </div>
 
@@ -693,9 +714,9 @@
                 return renderQuestionFullEditor(q, globalIndex);
               }).join('') : `
                 <div class="panel" style="text-align:center; padding:32px;">
-                  <p class="muted">No questions yet in this sub-section.</p>
-                  <div class="row" style="justify-content:center;">
-                    <button type="button" class="btn btn-primary" onclick="openBulkUploadModal()">📥 Bulk Upload CSV / Paste Questions</button>
+                  <p class="muted">No questions yet in this ${isWholeSubjectTab ? 'subject' : 'sub-section'}.</p>
+                  <div class="row" style="justify-content:center; gap:12px;">
+                    <button type="button" class="btn btn-primary" onclick="openBulkUploadModal('${isWholeSubjectTab ? 'WHOLE_SUBJECT' : 'SUB_SECTION'}')">📥 Bulk Upload CSV / Paste Questions</button>
                     <button type="button" class="btn btn-secondary" onclick="addNewQuestionToActiveSubSec()">+ Add Single Question</button>
                   </div>
                 </div>
@@ -868,50 +889,55 @@
       // ==========================================
       // BULK UPLOAD MODAL & CSV PARSER ENGINE
       // ==========================================
-      function openBulkUploadModal() {
+      function openBulkUploadModal(targetMode) {
         const modal = document.getElementById('bulkUploadModal');
         const currentSubject = adminState.editingExam.subjects[adminState.activeSubjectIndex];
-        const activeSubSec = currentSubject.subSections[adminState.activeSubSecIndex];
-        const isInteger = activeSubSec.type === 'INTEGER';
-        const isMulti = activeSubSec.type === 'MULTI_CORRECT';
+        const isWhole = (targetMode === 'WHOLE_SUBJECT') || (adminState.activeSubSecIndex === -1);
+        const subSections = currentSubject.subSections || [];
+        const activeSubSec = !isWhole ? (subSections[adminState.activeSubSecIndex] || subSections[0]) : null;
 
         modal.style.display = 'flex';
         modal.className = 'modal-backdrop';
         modal.innerHTML = `
-          <div class="modal-content" style="max-width:850px;">
+          <div class="modal-content" style="max-width:880px;">
             <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:12px; margin-bottom:16px;">
               <div>
-                <span class="badge" style="background:#5ec8ff; color:#03111d; font-weight:bold;">Bulk Question Uploader</span>
-                <h3 style="margin:4px 0 0;">Upload for: ${escapeHtml(currentSubject.subjectName)} > ${escapeHtml(activeSubSec.name)}</h3>
+                <span class="badge" style="background:#5ec8ff; color:#03111d; font-weight:bold;">🚀 Bulk Question Uploader</span>
+                <h3 style="margin:4px 0 0;">
+                  ${isWhole ? `Whole Subject: <strong>${escapeHtml(currentSubject.subjectName)}</strong> (All Sub-Sections)` : `Sub-Section Tab: <strong>${escapeHtml(activeSubSec.name)}</strong>`}
+                </h3>
               </div>
-              <button type="button" class="btn btn-secondary" onclick="closeBulkUploadModal()">Cancel</button>
+              <button type="button" class="btn btn-secondary" onclick="closeBulkUploadModal()">✕ Cancel</button>
+            </div>
+
+            <!-- Target Selection Dropdown -->
+            <div class="field" style="margin-bottom:14px;">
+              <label style="font-weight:600; color:#7bffcf;">🎯 Upload Target Destination:</label>
+              <select id="bulkTargetSelect" class="select" style="font-weight:bold;" onchange="onBulkTargetChange(this.value)">
+                <option value="WHOLE_SUBJECT" ${isWhole ? 'selected' : ''}>📁 Entire Subject (${escapeHtml(currentSubject.subjectName)}) - All Sub-Sections in one sheet</option>
+                ${subSections.map((sec, idx) => `
+                  <option value="${idx}" ${!isWhole && idx === adminState.activeSubSecIndex ? 'selected' : ''}>⚡ Sub-Section Tab: ${escapeHtml(sec.name)} (${sec.type})</option>
+                `).join('')}
+              </select>
             </div>
 
             <!-- Expected Format Guide -->
-            <div class="stack" style="margin-bottom:14px;">
-              <label style="font-size:0.85rem; font-weight:600; color:#7bffcf;">Expected CSV / Tab-Separated Columns:</label>
-              ${isInteger ? `
-                <div class="bulk-sample-box">
-                  Question Text | Correct Numerical Answer | Optional Image URL<br/>
-                  Example: What is the acceleration due to gravity on earth? | 9.8 | https://example.com/gravity.png
-                </div>
-              ` : `
-                <div class="bulk-sample-box">
-                  Question Text | Option A | Option B | Option C | Option D | Correct Answer (${isMulti ? 'e.g. AB or ACD' : 'A, B, C, or D'}) | Optional Image URL<br/>
-                  Example: Which gas is most abundant in Earth's atmosphere? | Nitrogen | Oxygen | Argon | CO2 | A | https://example.com/atm.png
-                </div>
-              `}
+            <div class="stack" id="bulkFormatGuide" style="margin-bottom:14px;">
+              ${renderBulkFormatGuide(isWhole ? 'WHOLE_SUBJECT' : adminState.activeSubSecIndex, currentSubject)}
             </div>
 
             <!-- Paste Input Area -->
             <div class="field" style="margin-bottom:14px;">
-              <label style="font-weight:600; font-size:0.85rem;">Paste rows from Excel, Google Sheets, or CSV (One line per question):</label>
-              <textarea id="bulkPasteInput" class="textarea" style="min-height:160px; font-family:monospace; font-size:0.85rem;" placeholder="Paste questions here..."></textarea>
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                <label style="font-weight:600; font-size:0.85rem;">📋 Paste rows from Excel / Google Sheets / CSV (One line per question):</label>
+                <button type="button" class="btn btn-secondary" style="font-size:0.75rem; padding:3px 8px;" onclick="loadSampleQuestionsIntoPasteBox()">Insert Sample Data</button>
+              </div>
+              <textarea id="bulkPasteInput" class="textarea" style="min-height:160px; font-family:monospace; font-size:0.85rem;" placeholder="Paste rows here..."></textarea>
             </div>
 
             <!-- File Selector Input -->
             <div class="field" style="margin-bottom:16px;">
-              <label style="font-size:0.8rem; color:#8ea0bf;">Or Upload a .CSV / .TXT File from Computer:</label>
+              <label style="font-size:0.8rem; color:#8ea0bf;">📁 Or Upload a .CSV / .TXT / .TSV File:</label>
               <input type="file" id="bulkFileInput" accept=".csv,.txt,.tsv" class="input" onchange="handleBulkFileSelect(this)" />
             </div>
 
@@ -919,7 +945,7 @@
             <div class="row" style="justify-content:space-between; align-items:center; border-top:1px solid rgba(255,255,255,0.1); padding-top:14px;">
               <div class="row">
                 <label style="font-size:0.85rem; cursor:pointer;">
-                  <input type="radio" name="bulkImportMode" value="REPLACE" checked /> Replace existing questions in this sub-section
+                  <input type="radio" name="bulkImportMode" value="REPLACE" checked /> Replace existing in target
                 </label>
                 <label style="font-size:0.85rem; cursor:pointer; margin-left:14px;">
                   <input type="radio" name="bulkImportMode" value="APPEND" /> Append to existing
@@ -927,11 +953,90 @@
               </div>
               <div class="row">
                 <button type="button" class="btn btn-secondary" onclick="closeBulkUploadModal()">Cancel</button>
-                <button type="button" class="btn btn-primary" onclick="executeBulkImport()">🚀 Process & Import Questions</button>
+                <button type="button" class="btn btn-primary" style="padding:10px 22px;" onclick="executeBulkImport()">🚀 Process & Import Questions</button>
               </div>
             </div>
           </div>
         `;
+      }
+
+      function onBulkTargetChange(val) {
+        const currentSubject = adminState.editingExam.subjects[adminState.activeSubjectIndex];
+        const guideEl = document.getElementById('bulkFormatGuide');
+        if (guideEl) {
+          guideEl.innerHTML = renderBulkFormatGuide(val, currentSubject);
+        }
+      }
+
+      function renderBulkFormatGuide(targetVal, currentSubject) {
+        const isWhole = targetVal === 'WHOLE_SUBJECT';
+        const subSections = currentSubject.subSections || [];
+
+        if (isWhole) {
+          return `
+            <label style="font-size:0.85rem; font-weight:600; color:#7bffcf;">Expected Columns for Whole Subject Sheet (Tab-separated or Comma-separated):</label>
+            <div class="bulk-sample-box">
+              SubSection Name | Question Type | Question Text | Option A | Option B | Option C | Option D | Correct Answer | Full Marks | Wrong Marks | Optional Image URL<br/><br/>
+              <strong>Example 1:</strong> Section 1 | SINGLE_CORRECT | Which element has atomic number 1? | Hydrogen | Helium | Lithium | Carbon | A | 4 | -1 | <br/>
+              <strong>Example 2:</strong> Section 2 | MULTI_CORRECT | Which of the following are noble gases? | Helium | Neon | Chlorine | Argon | ABD | 4 | -2 | <br/>
+              <strong>Example 3:</strong> Section 3 | INTEGER | What is the square of 12? | | | | | 144 | 4 | 0 | 
+            </div>
+          `;
+        }
+
+        const sec = subSections[Number(targetVal)] || subSections[0];
+        const isInteger = sec.type === 'INTEGER';
+        const isMulti = sec.type === 'MULTI_CORRECT';
+
+        if (isInteger) {
+          return `
+            <label style="font-size:0.85rem; font-weight:600; color:#7bffcf;">Expected Columns for Numerical/Integer Sub-Section:</label>
+            <div class="bulk-sample-box">
+              Question Text | Correct Numerical Answer | Optional Image URL<br/>
+              Example: Calculate the value of 25 * 4 | 100 | https://example.com/math.png
+            </div>
+          `;
+        }
+
+        return `
+          <label style="font-size:0.85rem; font-weight:600; color:#7bffcf;">Expected Columns for ${escapeHtml(sec.name)} (${sec.type}):</label>
+          <div class="bulk-sample-box">
+            Question Text | Option A | Option B | Option C | Option D | Correct Answer (${isMulti ? 'e.g. AB or ACD' : 'A, B, C, or D'}) | Optional Image URL<br/>
+            Example: Which gas is most abundant in Earth atmosphere? | Nitrogen | Oxygen | Argon | CO2 | A | https://example.com/atm.png
+          </div>
+        `;
+      }
+
+      function loadSampleQuestionsIntoPasteBox() {
+        const selVal = document.getElementById('bulkTargetSelect').value;
+        const currentSubject = adminState.editingExam.subjects[adminState.activeSubjectIndex];
+        const isWhole = selVal === 'WHOLE_SUBJECT';
+        const textarea = document.getElementById('bulkPasteInput');
+        if (!textarea) return;
+
+        if (isWhole) {
+          const s1 = (currentSubject.subSections && currentSubject.subSections[0]) ? currentSubject.subSections[0].name : 'Section 1';
+          const s2 = (currentSubject.subSections && currentSubject.subSections[1]) ? currentSubject.subSections[1].name : 'Section 2';
+          textarea.value = 
+            `SubSection\tType\tQuestionText\tOptionA\tOptionB\tOptionC\tOptionD\tCorrectAnswer\tFullMarks\tWrongMarks\tImageUrl\n` +
+            `${s1}\tSINGLE_CORRECT\tWhat is the speed of light in vacuum?\t3x10^8 m/s\t3x10^6 m/s\t3x10^5 km/s\t3x10^4 m/s\tA\t4\t-1\t\n` +
+            `${s1}\tSINGLE_CORRECT\tWhich planet is closest to the Sun?\tVenus\tMercury\tEarth\tMars\tB\t4\t-1\t\n` +
+            `${s2}\tMULTI_CORRECT\tWhich of the following are prime numbers?\t2\t3\t4\t5\tABD\t4\t-2\t\n` +
+            `${s2}\tINTEGER\tWhat is 15 multiplied by 8?\t\t\t\t\t120\t4\t0\t`;
+        } else {
+          const sec = currentSubject.subSections[Number(selVal)] || currentSubject.subSections[0];
+          if (sec.type === 'INTEGER') {
+            textarea.value = 
+              `Question Text\tCorrect Answer\tImage URL\n` +
+              `Calculate 20 + 35\t55\t\n` +
+              `What is the square root of 144?\t12\t`;
+          } else {
+            textarea.value = 
+              `Question Text\tOption A\tOption B\tOption C\tOption D\tCorrect Answer\tImage URL\n` +
+              `What is the capital of France?\tBerlin\tMadrid\tParis\tRome\tC\t\n` +
+              `Which organ pumps blood in human body?\tLungs\tHeart\tKidney\tBrain\tB\t`;
+          }
+        }
       }
 
       function closeBulkUploadModal() {
@@ -948,9 +1053,25 @@
         reader.readAsText(file);
       }
 
+      function downloadWholeSubjectCsvTemplate() {
+        const currentSubject = adminState.editingExam.subjects[adminState.activeSubjectIndex];
+        const subSections = currentSubject.subSections || [];
+        const s1 = subSections[0] ? subSections[0].name : 'Section 1';
+        const s2 = subSections[1] ? subSections[1].name : 'Section 2';
+
+        let csvContent = 'SubSection Name,Question Type,Question Text,Option A,Option B,Option C,Option D,Correct Answer,Full Marks,Wrong Marks,Optional Image URL\n' +
+          `"${s1}","SINGLE_CORRECT","What is the capital of France?","Berlin","Madrid","Paris","Rome","C",4,-1,""\n` +
+          `"${s1}","SINGLE_CORRECT","Which planet is known as Red Planet?","Venus","Mars","Jupiter","Saturn","B",4,-1,""\n` +
+          `"${s2}","MULTI_CORRECT","Which are prime numbers?","2","3","4","5","ABD",4,-2,""\n` +
+          `"${s2}","INTEGER","What is the value of 12 * 12?","","","","","144",4,0,""`;
+
+        downloadFile(`${currentSubject.subjectName}_Whole_Subject_Template.csv`, csvContent);
+      }
+
       function downloadSubSectionCsvTemplate() {
         const currentSubject = adminState.editingExam.subjects[adminState.activeSubjectIndex];
-        const activeSubSec = currentSubject.subSections[adminState.activeSubSecIndex];
+        const subSections = currentSubject.subSections || [];
+        const activeSubSec = subSections[adminState.activeSubSecIndex] || subSections[0];
         const isInteger = activeSubSec.type === 'INTEGER';
         const isMulti = activeSubSec.type === 'MULTI_CORRECT';
 
@@ -961,8 +1082,8 @@
             '"Calculate 15 * 6",90,""';
         } else {
           csvContent = 'Question Text,Option A,Option B,Option C,Option D,Correct Answer,Optional Image URL\n' +
-            `"What is the capital of France?","Berlin","Madrid","Paris","Rome","C",""\n` +
-            `"Which planet is known as the Red Planet?","Venus","Mars","Jupiter","Saturn","${isMulti ? 'B' : 'B'}",""`;
+            `"What is the chemical formula for water?","H2O","CO2","NaCl","O2","A",""\n` +
+            `"Which planet has rings?","Mars","Saturn","Venus","Mercury","${isMulti ? 'B' : 'B'}",""`;
         }
 
         downloadFile(`${currentSubject.subjectName}_${activeSubSec.name}_template.csv`, csvContent);
@@ -976,9 +1097,10 @@
         }
 
         const currentSubject = adminState.editingExam.subjects[adminState.activeSubjectIndex];
-        const activeSubSec = currentSubject.subSections[adminState.activeSubSecIndex];
-        const isInteger = activeSubSec.type === 'INTEGER';
-        const isMulti = activeSubSec.type === 'MULTI_CORRECT';
+        const subSections = currentSubject.subSections || [];
+        const targetVal = document.getElementById('bulkTargetSelect').value;
+        const isWhole = targetVal === 'WHOLE_SUBJECT';
+        const activeSubSec = !isWhole ? (subSections[Number(targetVal)] || subSections[0]) : null;
         const mode = document.querySelector('input[name="bulkImportMode"]:checked').value;
 
         const lines = rawText.split(/\r?\n/).filter(line => line.trim().length > 0);
@@ -986,91 +1108,170 @@
 
         lines.forEach((line, idx) => {
           // If first line is header row, skip
-          if (idx === 0 && (line.toLowerCase().includes('question') || line.toLowerCase().includes('option a'))) {
+          const lower = line.toLowerCase();
+          if (idx === 0 && (lower.includes('question') || lower.includes('option a') || lower.includes('subsection'))) {
             return;
           }
 
-          // Parse delimited by comma or tab or pipe
+          // Parse delimited by tab or pipe or CSV comma
           let cols = [];
           if (line.includes('\t')) {
             cols = line.split('\t').map(c => c.trim().replace(/^["']|["']$/g, ''));
           } else if (line.includes('|')) {
             cols = line.split('|').map(c => c.trim().replace(/^["']|["']$/g, ''));
           } else {
-            // CSV split handling quotes
             cols = parseCsvLine(line);
           }
 
-          if (!cols || !cols[0]) return;
+          if (!cols || !cols.length || !cols[0]) return;
 
-          if (isInteger) {
-            const qText = cols[0];
-            const correctVal = cols[1] || '0';
-            const imgUrl = cols[2] || '';
-            parsedQuestions.push({
-              questionId: 'q_' + Date.now() + '_' + (idx + 1),
-              subSectionName: activeSubSec.name,
-              questionNumber: 1,
-              questionType: 'INTEGER',
-              questionText: qText,
-              imageUrl: imgUrl,
-              options: [],
-              correctAnswer: correctVal,
-              fullMarks: activeSubSec.fullMarks !== undefined ? activeSubSec.fullMarks : 4,
-              partialMarks: 0,
-              wrongMarks: activeSubSec.wrongMarks !== undefined ? activeSubSec.wrongMarks : 0
-            });
+          if (isWhole) {
+            // Whole Subject Format:
+            // Col 0: SubSection Name (e.g. "Section 1")
+            // Col 1: Question Type (SINGLE_CORRECT / MULTI_CORRECT / INTEGER)
+            // Col 2: Question Text
+            // Col 3: Option A
+            // Col 4: Option B
+            // Col 5: Option C
+            // Col 6: Option D
+            // Col 7: Correct Answer
+            // Col 8: Full Marks
+            // Col 9: Wrong Marks
+            // Col 10: Image URL
+            let secName = cols[0].trim();
+            let qType = (cols[1] || 'SINGLE_CORRECT').trim().toUpperCase();
+            let qText = cols[2] || '';
+            let optA = cols[3] || '';
+            let optB = cols[4] || '';
+            let optC = cols[5] || '';
+            let optD = cols[6] || '';
+            let correctAns = cols[7] || '';
+            let fullM = cols[8] !== undefined && cols[8] !== '' ? Number(cols[8]) : 4;
+            let wrongM = cols[9] !== undefined && cols[9] !== '' ? Number(cols[9]) : -1;
+            let imgUrl = cols[10] || '';
+
+            // Auto-match or create sub-section if not exists
+            let matchedSec = subSections.find(s => s.name.toLowerCase() === secName.toLowerCase());
+            if (!matchedSec) {
+              matchedSec = subSections[0] || { name: secName || 'Section 1', type: qType, fullMarks: fullM, wrongMarks: wrongM };
+              secName = matchedSec.name;
+            }
+
+            if (qType === 'INTEGER' || matchedSec.type === 'INTEGER') {
+              parsedQuestions.push({
+                questionId: 'q_' + Date.now() + '_' + (idx + 1) + '_' + Math.floor(Math.random()*1000),
+                subSectionName: secName,
+                questionNumber: 1,
+                questionType: 'INTEGER',
+                questionText: qText || optA, // in case user shifted columns
+                imageUrl: imgUrl,
+                options: [],
+                correctAnswer: correctAns || optB || '0',
+                fullMarks: fullM,
+                partialMarks: 0,
+                wrongMarks: wrongM || 0
+              });
+            } else {
+              parsedQuestions.push({
+                questionId: 'q_' + Date.now() + '_' + (idx + 1) + '_' + Math.floor(Math.random()*1000),
+                subSectionName: secName,
+                questionNumber: 1,
+                questionType: qType || matchedSec.type || 'SINGLE_CORRECT',
+                questionText: qText,
+                imageUrl: imgUrl,
+                options: [
+                  { id: 'A', label: optA },
+                  { id: 'B', label: optB },
+                  { id: 'C', label: optC },
+                  { id: 'D', label: optD }
+                ],
+                correctAnswer: String(correctAns || 'A').toUpperCase().replace(/[^A-D]/g, '') || 'A',
+                fullMarks: fullM,
+                partialMarks: (qType === 'MULTI_CORRECT' || matchedSec.type === 'MULTI_CORRECT') ? 1 : 0,
+                wrongMarks: wrongM
+              });
+            }
           } else {
-            const qText = cols[0];
-            const optA = cols[1] || '';
-            const optB = cols[2] || '';
-            const optC = cols[3] || '';
-            const optD = cols[4] || '';
-            const correctAns = (cols[5] || 'A').toUpperCase().replace(/[^A-D]/g, '');
-            const imgUrl = cols[6] || '';
+            // Specific Sub-Section Format
+            const isInteger = activeSubSec.type === 'INTEGER';
+            if (isInteger) {
+              const qText = cols[0];
+              const correctVal = cols[1] || '0';
+              const imgUrl = cols[2] || '';
+              parsedQuestions.push({
+                questionId: 'q_' + Date.now() + '_' + (idx + 1) + '_' + Math.floor(Math.random()*1000),
+                subSectionName: activeSubSec.name,
+                questionNumber: 1,
+                questionType: 'INTEGER',
+                questionText: qText,
+                imageUrl: imgUrl,
+                options: [],
+                correctAnswer: correctVal,
+                fullMarks: activeSubSec.fullMarks !== undefined ? activeSubSec.fullMarks : 4,
+                partialMarks: 0,
+                wrongMarks: activeSubSec.wrongMarks !== undefined ? activeSubSec.wrongMarks : 0
+              });
+            } else {
+              const qText = cols[0];
+              const optA = cols[1] || '';
+              const optB = cols[2] || '';
+              const optC = cols[3] || '';
+              const optD = cols[4] || '';
+              const correctAns = (cols[5] || 'A').toUpperCase().replace(/[^A-D]/g, '');
+              const imgUrl = cols[6] || '';
 
-            parsedQuestions.push({
-              questionId: 'q_' + Date.now() + '_' + (idx + 1),
-              subSectionName: activeSubSec.name,
-              questionNumber: 1,
-              questionType: activeSubSec.type,
-              questionText: qText,
-              imageUrl: imgUrl,
-              options: [
-                { id: 'A', label: optA },
-                { id: 'B', label: optB },
-                { id: 'C', label: optC },
-                { id: 'D', label: optD }
-              ],
-              correctAnswer: correctAns || 'A',
-              fullMarks: activeSubSec.fullMarks !== undefined ? activeSubSec.fullMarks : 4,
-              partialMarks: activeSubSec.partialMarks !== undefined ? activeSubSec.partialMarks : 1,
-              wrongMarks: activeSubSec.wrongMarks !== undefined ? activeSubSec.wrongMarks : -1
-            });
+              parsedQuestions.push({
+                questionId: 'q_' + Date.now() + '_' + (idx + 1) + '_' + Math.floor(Math.random()*1000),
+                subSectionName: activeSubSec.name,
+                questionNumber: 1,
+                questionType: activeSubSec.type,
+                questionText: qText,
+                imageUrl: imgUrl,
+                options: [
+                  { id: 'A', label: optA },
+                  { id: 'B', label: optB },
+                  { id: 'C', label: optC },
+                  { id: 'D', label: optD }
+                ],
+                correctAnswer: correctAns || 'A',
+                fullMarks: activeSubSec.fullMarks !== undefined ? activeSubSec.fullMarks : 4,
+                partialMarks: activeSubSec.partialMarks !== undefined ? activeSubSec.partialMarks : 1,
+                wrongMarks: activeSubSec.wrongMarks !== undefined ? activeSubSec.wrongMarks : -1
+              });
+            }
           }
         });
 
         if (!parsedQuestions.length) {
-          alert('Could not parse questions. Please check the column format and try again.');
+          alert('Could not parse questions. Please check the columns and try again.');
           return;
         }
 
         if (!currentSubject.questions) currentSubject.questions = [];
 
-        if (mode === 'REPLACE') {
-          // Remove only existing questions from this sub-section
-          currentSubject.questions = currentSubject.questions.filter(q => q.subSectionName !== activeSubSec.name).concat(parsedQuestions);
+        if (isWhole) {
+          if (mode === 'REPLACE') {
+            currentSubject.questions = parsedQuestions;
+          } else {
+            currentSubject.questions = currentSubject.questions.concat(parsedQuestions);
+          }
         } else {
-          currentSubject.questions = currentSubject.questions.concat(parsedQuestions);
+          if (mode === 'REPLACE') {
+            currentSubject.questions = currentSubject.questions.filter(q => q.subSectionName !== activeSubSec.name).concat(parsedQuestions);
+          } else {
+            currentSubject.questions = currentSubject.questions.concat(parsedQuestions);
+          }
         }
 
-        // Update count on subSection
-        activeSubSec.count = currentSubject.questions.filter(q => q.subSectionName === activeSubSec.name).length;
+        // Update counts on each sub-section
+        subSections.forEach(sec => {
+          sec.count = currentSubject.questions.filter(q => q.subSectionName === sec.name).length;
+        });
 
         recalcGlobalQuestionNumbers();
         persistDraftToStorage();
         closeBulkUploadModal();
-        alert(`✅ Successfully imported ${parsedQuestions.length} questions into ${activeSubSec.name}!`);
+        alert(`✅ Successfully imported ${parsedQuestions.length} questions into ${isWhole ? currentSubject.subjectName : activeSubSec.name}!`);
         renderWizardModal();
       }
 
@@ -1477,15 +1678,51 @@
         openStudentDrawer((adminState.students || []).find((item) => String(item.studentId) === String(studentId)));
       }
 
+      function onStudentClassSelectChange(val) {
+        const customField = document.getElementById('customClassContainer');
+        if (customField) {
+          customField.style.display = val === '__NEW_CLASS__' ? 'block' : 'none';
+          if (val === '__NEW_CLASS__') {
+            const input = document.getElementById('customClassName');
+            if (input) input.focus();
+          }
+        }
+      }
+
       function openStudentDrawer(student) {
         const item = student || {};
+        const classNamesFromState = (adminState.classes || []).map(c => c.className).filter(Boolean);
+        const classNamesFromStudents = (adminState.students || []).map(s => s.className).filter(Boolean);
+        const defaultClasses = ['Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10', 'Class 11', 'Class 12'];
+        const uniqueClasses = Array.from(new Set([...classNamesFromState, ...classNamesFromStudents, ...defaultClasses])).filter(Boolean).sort();
+
+        const currentClass = item.className || (uniqueClasses[0] || 'Class 10');
+        const isCustom = currentClass && !uniqueClasses.includes(currentClass);
+
         openDrawer(`
           <div class="stack">
             <h3 style="margin:0;">${item.studentId ? 'Edit Student' : 'Add Student'}</h3>
             ${renderField('Student Full Name', 'studentName', item.studentName || '')}
             ${renderField('Mobile Number (Student Login ID)', 'mobileNumber', item.mobileNumber || '')}
             ${renderField('Admission / Roll Number', 'admissionNumber', item.admissionNumber || '')}
-            ${renderField('Class (e.g. Class 10, Grade 12)', 'className', item.className || '')}
+            
+            <div class="field">
+              <label style="font-weight:600; color:#7bffcf;">🎯 Class / Grade (Select Existing Class)</label>
+              <select id="studentClassSelect" class="select" style="font-weight:bold;" onchange="onStudentClassSelectChange(this.value)">
+                ${uniqueClasses.map(cls => `
+                  <option value="${escapeAttribute(cls)}" ${cls === currentClass ? 'selected' : ''}>
+                    ${escapeHtml(cls)}
+                  </option>
+                `).join('')}
+                <option value="__NEW_CLASS__" ${isCustom ? 'selected' : ''}>+ Add / Type New Class Name...</option>
+              </select>
+            </div>
+
+            <div class="field" id="customClassContainer" style="${isCustom ? 'display:block;' : 'display:none;'}">
+              <label style="font-weight:600; color:#5ec8ff;">Custom Class Name</label>
+              <input id="customClassName" class="input" type="text" placeholder="e.g. Class 10 - Section B" value="${isCustom ? escapeAttribute(currentClass) : ''}" />
+            </div>
+
             ${renderSelectField('Status', 'status', item.status || 'ACTIVE', SIMPLE_STATUS_OPTIONS)}
             <div class="row">
               <button type="button" class="btn btn-primary" onclick="saveStudentForm('${escapeJs(item.studentId || '')}')">Save Student</button>
@@ -1547,13 +1784,21 @@
 
       async function saveStudentForm(studentId) {
         const existing = (adminState.students || []).find((item) => String(item.studentId) === String(studentId)) || {};
+        const selClass = document.getElementById('studentClassSelect') ? document.getElementById('studentClassSelect').value : '';
+        let finalClassName = selClass;
+        if (selClass === '__NEW_CLASS__') {
+          const customInp = document.getElementById('customClassName');
+          finalClassName = customInp ? customInp.value.trim() : '';
+        }
+        if (!finalClassName) finalClassName = 'Class 10';
+
         const payload = {
           studentId: existing.studentId || '',
           createdAt: existing.createdAt || '',
           studentName: document.getElementById('studentName').value.trim(),
           mobileNumber: document.getElementById('mobileNumber').value.trim(),
           admissionNumber: document.getElementById('admissionNumber').value.trim(),
-          className: document.getElementById('className').value.trim(),
+          className: finalClassName,
           status: document.getElementById('status').value.trim() || 'ACTIVE'
         };
         await callAdmin('saveStudent', { token: adminState.token, data: payload });
