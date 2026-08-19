@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Exam Management Admin - Section Builder & Color Heatmap Analytics</title>
+    <title>Exam Management Admin - Section Builder & Bulk Question Uploader</title>
     <link rel="stylesheet" href="./styles.css" />
     <script src="./config.js"></script>
     <style>
@@ -15,15 +15,20 @@
       .sec-row { background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 14px; margin-bottom: 12px; }
       .opt-editor-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
       .opt-letter-badge { width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.08); border-radius: 8px; font-weight: bold; font-size: 0.95rem; }
+      
       .subject-pill { padding: 8px 18px; border-radius: 20px; font-size: 0.9rem; font-weight: 600; cursor: pointer; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.04); transition: all 0.15s ease; }
       .subject-pill.active { background: #5ec8ff; color: #07111f; border-color: #5ec8ff; box-shadow: 0 0 16px rgba(94,200,255,0.3); }
+
+      .subsec-tab { padding: 6px 14px; border-radius: 10px; font-size: 0.82rem; font-weight: 600; cursor: pointer; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); color: #8ea0bf; transition: all 0.15s ease; }
+      .subsec-tab.active { background: rgba(123, 255, 207, 0.15); color: #7bffcf; border-color: #7bffcf; box-shadow: 0 0 12px rgba(123, 255, 207, 0.25); }
       
-      .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.8); backdrop-filter: blur(6px); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 16px; }
-      .modal-content { background: #0c182f; border: 1px solid rgba(145, 179, 255, 0.3); border-radius: 20px; max-width: 1040px; width: 100%; max-height: 92vh; overflow-y: auto; padding: 26px; box-shadow: 0 20px 70px rgba(0,0,0,0.7); }
+      .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 16px; }
+      .modal-content { background: #0c182f; border: 1px solid rgba(145, 179, 255, 0.3); border-radius: 20px; max-width: 1060px; width: 100%; max-height: 92vh; overflow-y: auto; padding: 26px; box-shadow: 0 20px 70px rgba(0,0,0,0.7); }
       
       .q-card-editor { background: rgba(255,255,255,0.03); border: 1px solid rgba(145,179,255,0.18); border-radius: 16px; padding: 18px; margin-bottom: 16px; }
       .correct-check { width: 22px; height: 22px; accent-color: #10b981; cursor: pointer; }
       .draft-badge { background: rgba(93, 226, 155, 0.15); color: #5de29b; border: 1px solid rgba(93, 226, 155, 0.3); font-size: 0.8rem; padding: 4px 10px; border-radius: 20px; display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+      .bulk-sample-box { background: rgba(0,0,0,0.4); border: 1px dashed rgba(145,179,255,0.3); border-radius: 10px; padding: 12px; font-family: monospace; font-size: 0.8rem; color: #a5c5ff; margin-bottom: 12px; overflow-x: auto; }
     </style>
   </head>
   <body>
@@ -31,14 +36,15 @@
     <div id="overlay" class="overlay" onclick="closeDrawer()"></div>
     <div id="drawer" class="drawer"></div>
     <div id="builderModal" style="display: none;"></div>
+    <div id="bulkUploadModal" style="display: none;"></div>
 
     <script>
       const BOOTSTRAP = {
         appName: (window.APP_CONFIG && window.APP_CONFIG.appName) || 'Exam Management Software'
       };
 
-      const DRAFT_STORAGE_KEY = 'ems_admin_exam_draft_v3';
-      const TOKEN_STORAGE_KEY = 'ems_admin_token_v3';
+      const DRAFT_STORAGE_KEY = 'ems_admin_exam_draft_v4';
+      const TOKEN_STORAGE_KEY = 'ems_admin_token_v4';
 
       const adminState = {
         token: localStorage.getItem(TOKEN_STORAGE_KEY) || sessionStorage.getItem('adminToken') || '',
@@ -53,6 +59,7 @@
         error: '',
         editingExam: null,
         activeSubjectIndex: 0,
+        activeSubSecIndex: 0,
         wizardStep: 'structure', // 'structure' or 'questions'
         draftStatus: 'Auto-saved locally ✓'
       };
@@ -67,7 +74,7 @@
         { value: 'HIDDEN_UNTIL_PUBLISHED', label: 'Hide result until teacher publishes it' }
       ];
 
-      const EXAM_STATUS_OPTIONS = ['DRAFT', 'PUBLISHED', 'ACTIVE', 'ENDED', 'ARCHIVED'];
+      const EXAM_STATUS_OPTIONS = ['PUBLISHED', 'ACTIVE', 'DRAFT', 'ENDED', 'ARCHIVED'];
       const SIMPLE_STATUS_OPTIONS = ['ACTIVE', 'INACTIVE'];
 
       // ==========================================
@@ -83,6 +90,7 @@
             editingExam: adminState.editingExam,
             wizardStep: adminState.wizardStep,
             activeSubjectIndex: adminState.activeSubjectIndex,
+            activeSubSecIndex: adminState.activeSubSecIndex,
             savedAt: new Date().toISOString()
           };
           localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draftPayload));
@@ -101,6 +109,7 @@
             adminState.editingExam = data.editingExam;
             adminState.wizardStep = data.wizardStep || 'structure';
             adminState.activeSubjectIndex = Number(data.activeSubjectIndex || 0);
+            adminState.activeSubSecIndex = Number(data.activeSubSecIndex || 0);
             renderWizardModal();
             return true;
           }
@@ -266,7 +275,7 @@
             <div class="toolbar" style="margin-bottom:16px;">
               <div>
                 <h3 style="margin:0;">Exams & Question Management</h3>
-                <p class="muted" style="margin:4px 0 0; font-size:0.85rem;">Define Subjects (Maths, Physics, Chemistry), enter Question Statements, Options & Partial Marking.</p>
+                <p class="muted" style="margin:4px 0 0; font-size:0.85rem;">Create exams assigned to specific classes or whole school, define sections, and upload questions in bulk.</p>
               </div>
               <button type="button" class="btn btn-primary" onclick="openCreateExamWizard()">+ Create New Exam Paper</button>
             </div>
@@ -274,13 +283,15 @@
               ${(adminState.exams || []).map((exam) => {
                 const totalQ = (exam.subjects || []).reduce((sum, s) => sum + (s.questions ? s.questions.length : 0), 0);
                 const subNames = (exam.subjects || []).map(s => s.subjectName).join(', ');
+                const targetDisplay = exam.targetClass && exam.targetClass !== 'ALL' ? exam.targetClass : 'All Classes';
                 return `
                   <div class="exam-card">
                     <div class="stack">
                       <div class="row">
                         <strong style="font-size:1.15rem;">${escapeHtml(exam.examName)}</strong>
-                        <span class="badge">${escapeHtml(exam.status)}</span>
-                        <span class="badge" style="background:#5ec8ff/20; color:#5ec8ff;">${totalQ} Total Questions</span>
+                        <span class="badge" style="background:#5ec8ff/20; color:#5ec8ff;">Target: ${escapeHtml(targetDisplay)}</span>
+                        <span class="badge" style="background:${exam.status === 'PUBLISHED' ? '#10b981/20' : 'rgba(255,255,255,0.1)'}; color:${exam.status === 'PUBLISHED' ? '#10b981' : '#fff'};">${escapeHtml(exam.status)}</span>
+                        <span class="badge">${totalQ} Questions</span>
                       </div>
                       <div class="muted">
                         📚 Subjects: <strong>${escapeHtml(subNames || 'General')}</strong> · 📅 Date: ${escapeHtml(exam.examDate)} · ⏱️ Duration: ${escapeHtml(exam.durationMinutes)} min 
@@ -289,9 +300,9 @@
                       </div>
                     </div>
                     <div class="row">
-                      <button type="button" class="btn btn-primary" onclick="openExistingExamWizard('${escapeJs(exam.examId)}')">📝 Edit Questions & Options (${totalQ})</button>
-                      <button type="button" class="btn btn-secondary" onclick="openExamSettingsDrawer('${escapeJs(exam.examId)}')">⚙️ Timing & Settings</button>
-                      <button type="button" class="btn btn-secondary" onclick="setExamStatus('${exam.examId}', 'PUBLISHED')">Publish</button>
+                      <button type="button" class="btn btn-primary" onclick="openExistingExamWizard('${escapeJs(exam.examId)}')">📝 Edit & Bulk Upload Questions (${totalQ})</button>
+                      <button type="button" class="btn btn-secondary" onclick="openExamSettingsDrawer('${escapeJs(exam.examId)}')">⚙️ Class & Timing</button>
+                      <button type="button" class="btn btn-secondary" onclick="setExamStatus('${exam.examId}', 'PUBLISHED')">Publish Live</button>
                       <button type="button" class="btn btn-secondary" onclick="duplicateExam('${exam.examId}')">Duplicate</button>
                       <button type="button" class="btn btn-danger" onclick="removeExam('${exam.examId}')">Delete</button>
                     </div>
@@ -308,17 +319,20 @@
       // ==========================================
       function openCreateExamWizard() {
         const today = new Date().toISOString().split('T')[0];
+        const defaultClass = adminState.classes && adminState.classes.length ? adminState.classes[0].className : 'ALL';
+        
         adminState.editingExam = {
           examId: '',
           examName: 'Main Exam Paper',
+          targetClass: defaultClass,
           examDate: today,
           durationMinutes: 90,
           availabilityStart: '',
           availabilityEnd: '',
           mode: 'FULL_ONLINE_EXAM',
           resultMode: 'IMMEDIATE',
-          status: 'DRAFT',
-          assignedStudentIds: (adminState.students || []).filter(s => s.status === 'ACTIVE').map(s => s.studentId),
+          status: 'PUBLISHED',
+          assignedStudentIds: [],
           subjects: [
             {
               examSubjectId: 'sub_maths',
@@ -353,6 +367,7 @@
           ]
         };
         adminState.activeSubjectIndex = 0;
+        adminState.activeSubSecIndex = 0;
         adminState.wizardStep = 'structure';
         persistDraftToStorage();
         renderWizardModal();
@@ -362,6 +377,7 @@
         let exam = await callAdmin('getExamDetail', { token: adminState.token, examId });
         adminState.editingExam = JSON.parse(JSON.stringify(exam));
         adminState.activeSubjectIndex = 0;
+        adminState.activeSubSecIndex = 0;
         const totalQ = adminState.editingExam.subjects.reduce((sum, s) => sum + (s.questions ? s.questions.length : 0), 0);
         adminState.wizardStep = totalQ > 0 ? 'questions' : 'structure';
         persistDraftToStorage();
@@ -384,12 +400,15 @@
       }
 
       function renderStructureStep(exam) {
+        const classList = (adminState.classes || []).map(c => c.className).filter(Boolean);
+        const uniqueClasses = Array.from(new Set(['ALL', 'Class 10', 'Class 11', 'Class 12', ...classList]));
+
         return `
           <div class="modal-content">
             <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:14px; margin-bottom:18px;">
               <div>
-                <span class="badge" style="background:#5ec8ff; color:#03111d; font-weight:bold;">Step 1: Exam Structure & Blueprint</span>
-                <h2 style="margin:6px 0 0; font-size:1.35rem;">Define Subjects & Sub-Sections</h2>
+                <span class="badge" style="background:#5ec8ff; color:#03111d; font-weight:bold;">Step 1: Exam Structure & Target Class</span>
+                <h2 style="margin:6px 0 0; font-size:1.35rem;">Define Blueprint & Assign Class</h2>
               </div>
               <div class="row">
                 <span class="draft-badge" id="draft-indicator">💾 Auto-saved locally ✓</span>
@@ -398,8 +417,21 @@
               </div>
             </div>
 
-            <div class="grid cards-2" style="margin-bottom:16px;">
+            <!-- Meta & Target Class -->
+            <div class="grid cards-3" style="margin-bottom:16px;">
               ${renderField('Exam Title / Name', 'wizardExamName', exam.examName || '', 'text', 'updateExamMeta("examName", this.value)')}
+              
+              <div class="field">
+                <label style="font-weight:600; color:#7bffcf;">🎯 Target Class / Grade</label>
+                <select class="select" style="font-weight:bold;" onchange="updateExamMeta('targetClass', this.value)">
+                  ${uniqueClasses.map(cls => `
+                    <option value="${escapeAttribute(cls)}" ${(exam.targetClass || 'ALL') === cls ? 'selected' : ''}>
+                      ${cls === 'ALL' ? '🌟 All Enrolled Classes (Whole School)' : escapeHtml(cls)}
+                    </option>
+                  `).join('')}
+                </select>
+              </div>
+
               ${renderField('Exam Duration (Minutes)', 'wizardDuration', exam.durationMinutes || 90, 'number', 'updateExamMeta("durationMinutes", Number(this.value))')}
             </div>
 
@@ -467,10 +499,10 @@
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-top:20px; border-top:1px solid rgba(255,255,255,0.1); padding-top:16px;">
               <div class="muted" style="font-size:0.85rem;">
-                Total Questions to Generate: <strong>${calculateTotalQuestions(exam)}</strong>
+                Total Questions Blueprint: <strong>${calculateTotalQuestions(exam)}</strong> · Target: <strong>${escapeHtml(exam.targetClass || 'ALL')}</strong>
               </div>
               <button type="button" class="btn btn-primary" style="font-size:1rem; padding:10px 24px;" onclick="generatePaperQuestions()">
-                🚀 Generate Paper & Enter Questions / Options →
+                🚀 Proceed to Question Builder & Bulk Uploader →
               </button>
             </div>
           </div>
@@ -533,28 +565,43 @@
         let globalQNum = 1;
 
         exam.subjects.forEach(sub => {
+          // If questions already exist and match count, preserve them
+          const existingQs = sub.questions || [];
           const generatedQuestions = [];
+          
           (sub.subSections || []).forEach(sec => {
             const count = Number(sec.count || 5);
+            // find existing questions for this sub section
+            const secExisting = existingQs.filter(q => q.subSectionName === sec.name);
             for (let i = 0; i < count; i++) {
-              generatedQuestions.push({
-                questionId: 'q_' + Date.now() + '_' + globalQNum,
-                subSectionName: sec.name,
-                questionNumber: globalQNum,
-                questionType: sec.type,
-                questionText: '',
-                imageUrl: '',
-                options: [
-                  { id: 'A', label: '' },
-                  { id: 'B', label: '' },
-                  { id: 'C', label: '' },
-                  { id: 'D', label: '' }
-                ],
-                correctAnswer: sec.type === 'INTEGER' ? '0' : 'A',
-                fullMarks: sec.fullMarks !== undefined ? sec.fullMarks : 4,
-                partialMarks: sec.partialMarks !== undefined ? sec.partialMarks : 1,
-                wrongMarks: sec.wrongMarks !== undefined ? sec.wrongMarks : -1
-              });
+              if (secExisting[i]) {
+                const preserved = secExisting[i];
+                preserved.questionNumber = globalQNum;
+                preserved.questionType = sec.type;
+                preserved.fullMarks = sec.fullMarks !== undefined ? sec.fullMarks : 4;
+                preserved.partialMarks = sec.partialMarks !== undefined ? sec.partialMarks : 1;
+                preserved.wrongMarks = sec.wrongMarks !== undefined ? sec.wrongMarks : -1;
+                generatedQuestions.push(preserved);
+              } else {
+                generatedQuestions.push({
+                  questionId: 'q_' + Date.now() + '_' + globalQNum,
+                  subSectionName: sec.name,
+                  questionNumber: globalQNum,
+                  questionType: sec.type,
+                  questionText: '',
+                  imageUrl: '',
+                  options: [
+                    { id: 'A', label: '' },
+                    { id: 'B', label: '' },
+                    { id: 'C', label: '' },
+                    { id: 'D', label: '' }
+                  ],
+                  correctAnswer: sec.type === 'INTEGER' ? '0' : 'A',
+                  fullMarks: sec.fullMarks !== undefined ? sec.fullMarks : 4,
+                  partialMarks: sec.partialMarks !== undefined ? sec.partialMarks : 1,
+                  wrongMarks: sec.wrongMarks !== undefined ? sec.wrongMarks : -1
+                });
+              }
               globalQNum++;
             }
           });
@@ -563,22 +610,34 @@
 
         adminState.wizardStep = 'questions';
         adminState.activeSubjectIndex = 0;
+        adminState.activeSubSecIndex = 0;
         persistDraftToStorage();
         renderWizardModal();
       }
 
-      // STEP 2: RICH QUESTION & OPTION TEXT EDITOR
+      // STEP 2: RICH QUESTION, SUB-SECTION TABS & BULK UPLOADER
       function renderQuestionsStep(exam) {
         const currentSubject = exam.subjects[adminState.activeSubjectIndex] || exam.subjects[0];
-        const questions = currentSubject ? (currentSubject.questions || []) : [];
+        const subSections = (currentSubject && currentSubject.subSections) || [];
+        const activeSubSec = subSections[adminState.activeSubSecIndex] || subSections[0] || { name: 'Section 1', type: 'SINGLE_CORRECT' };
+        
+        // Filter questions belonging to this active sub-section
+        const allQuestionsInSubject = currentSubject ? (currentSubject.questions || []) : [];
+        const filteredQuestions = allQuestionsInSubject.filter(q => q.subSectionName === activeSubSec.name);
+
+        const totalQ = exam.subjects.reduce((sum, s) => sum + (s.questions ? s.questions.length : 0), 0);
 
         return `
           <div class="modal-content">
             <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:18px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:14px;">
               <div>
-                <span class="badge" style="background:#5de29b; color:#03111d; font-weight:bold;">Step 2: Type Questions & Options</span>
+                <span class="badge" style="background:#5de29b; color:#03111d; font-weight:bold;">Step 2: Questions & Bulk Uploader</span>
                 <h2 style="margin:6px 0 0; font-size:1.35rem;">${escapeHtml(exam.examName)}</h2>
-                <p class="muted" style="margin:2px 0 0; font-size:0.85rem;">Type question text, options A, B, C, D, and check the box/radio for the correct answer.</p>
+                <div class="row" style="margin-top:4px;">
+                  <span class="badge" style="background:#5ec8ff/20; color:#5ec8ff;">Class: ${escapeHtml(exam.targetClass || 'ALL')}</span>
+                  <span class="badge">${totalQ} Total Questions</span>
+                  <span class="badge">⏱️ ${exam.durationMinutes} Min</span>
+                </div>
               </div>
               <div class="row">
                 <span class="draft-badge" id="draft-indicator">💾 Auto-saved locally ✓</span>
@@ -588,18 +647,59 @@
               </div>
             </div>
 
-            <!-- Subject Tabs -->
-            <div style="display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap;">
+            <!-- Subject Navigation Tabs -->
+            <div style="display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap;">
               ${exam.subjects.map((sub, idx) => `
-                <div class="subject-pill ${idx === adminState.activeSubjectIndex ? 'active' : ''}" onclick="adminState.activeSubjectIndex=${idx}; persistDraftToStorage(); renderWizardModal();">
-                  ${escapeHtml(sub.subjectName)} (${(sub.questions || []).length} Questions)
+                <div class="subject-pill ${idx === adminState.activeSubjectIndex ? 'active' : ''}" onclick="adminState.activeSubjectIndex=${idx}; adminState.activeSubSecIndex=0; persistDraftToStorage(); renderWizardModal();">
+                  ${escapeHtml(sub.subjectName)} (${(sub.questions || []).length} Qs)
                 </div>
               `).join('')}
             </div>
 
-            <!-- Question & Option Editors List -->
+            <!-- Sub-Section Tabs within the Active Subject -->
+            <div style="background:rgba(0,0,0,0.25); border:1px solid rgba(145,179,255,0.15); border-radius:14px; padding:14px; margin-bottom:18px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                  ${subSections.map((sec, secIdx) => `
+                    <div class="subsec-tab ${secIdx === adminState.activeSubSecIndex ? 'active' : ''}" onclick="adminState.activeSubSecIndex=${secIdx}; persistDraftToStorage(); renderWizardModal();">
+                      ${escapeHtml(sec.name)} · <span style="opacity:0.8;">${allQuestionsInSubject.filter(q => q.subSectionName === sec.name).length} Qs</span>
+                    </div>
+                  `).join('')}
+                </div>
+                <div class="row">
+                  <button type="button" class="btn btn-secondary" style="font-size:0.8rem; padding:6px 12px; background:rgba(94,200,255,0.15); border-color:#5ec8ff;" onclick="openBulkUploadModal()">
+                    📥 Bulk Upload Questions for this Sub-Section
+                  </button>
+                  <button type="button" class="btn btn-secondary" style="font-size:0.8rem; padding:6px 12px;" onclick="downloadSubSectionCsvTemplate()">
+                    📄 Download CSV Template
+                  </button>
+                  <button type="button" class="btn btn-secondary" style="font-size:0.8rem; padding:6px 12px;" onclick="addNewQuestionToActiveSubSec()">
+                    + Add Single Question
+                  </button>
+                </div>
+              </div>
+
+              <!-- Active Sub-Section Info Badge -->
+              <div class="muted" style="font-size:0.85rem; display:flex; justify-content:space-between; align-items:center;">
+                <span>Type: <strong style="color:var(--accent);">${activeSubSec.type}</strong> · Scheme: <strong style="color:#10b981;">+${activeSubSec.fullMarks || 4} Full</strong> / <strong style="color:#ef4444;">${activeSubSec.wrongMarks || -1} Penalty</strong> ${activeSubSec.type === 'MULTI_CORRECT' ? `· <strong style="color:#f59e0b;">+${activeSubSec.partialMarks || 1} Partial</strong>` : ''}</span>
+                <span>Questions in this sub-section: <strong>${filteredQuestions.length}</strong></span>
+              </div>
+            </div>
+
+            <!-- Question & Option Editors List for this Sub-Section -->
             <div class="stack">
-              ${questions.map((q, qIndex) => renderQuestionFullEditor(q, qIndex)).join('')}
+              ${filteredQuestions.length ? filteredQuestions.map((q) => {
+                const globalIndex = allQuestionsInSubject.indexOf(q);
+                return renderQuestionFullEditor(q, globalIndex);
+              }).join('') : `
+                <div class="panel" style="text-align:center; padding:32px;">
+                  <p class="muted">No questions yet in this sub-section.</p>
+                  <div class="row" style="justify-content:center;">
+                    <button type="button" class="btn btn-primary" onclick="openBulkUploadModal()">📥 Bulk Upload CSV / Paste Questions</button>
+                    <button type="button" class="btn btn-secondary" onclick="addNewQuestionToActiveSubSec()">+ Add Single Question</button>
+                  </div>
+                </div>
+              `}
             </div>
 
             <div style="margin-top:24px; padding-top:16px; border-top:1px solid rgba(255,255,255,0.1); display:flex; justify-content:space-between; align-items:center;">
@@ -629,6 +729,7 @@
                 <span class="badge" style="color:var(--accent); font-weight:bold;">${escapeHtml(q.questionType)}</span>
                 <span class="badge">+${q.fullMarks} / ${q.wrongMarks} ${isMulti ? `(Partial: +${q.partialMarks || 1})` : ''}</span>
               </div>
+              <button type="button" class="btn btn-danger" style="padding:4px 8px; font-size:0.75rem;" onclick="deleteQuestionAt(${qIndex})">Delete Q</button>
             </div>
 
             <!-- Question Statement Textarea -->
@@ -701,6 +802,46 @@
         persistDraftToStorage();
       }
 
+      function deleteQuestionAt(qIndex) {
+        const sub = adminState.editingExam.subjects[adminState.activeSubjectIndex];
+        sub.questions.splice(qIndex, 1);
+        recalcGlobalQuestionNumbers();
+        persistDraftToStorage();
+        renderWizardModal();
+      }
+
+      function addNewQuestionToActiveSubSec() {
+        const sub = adminState.editingExam.subjects[adminState.activeSubjectIndex];
+        const sec = sub.subSections[adminState.activeSubSecIndex] || { name: 'Section 1', type: 'SINGLE_CORRECT', fullMarks: 4, partialMarks: 1, wrongMarks: -1 };
+        
+        if (!sub.questions) sub.questions = [];
+        sub.questions.push({
+          questionId: 'q_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+          subSectionName: sec.name,
+          questionNumber: 1,
+          questionType: sec.type,
+          questionText: '',
+          imageUrl: '',
+          options: [{ id: 'A', label: '' }, { id: 'B', label: '' }, { id: 'C', label: '' }, { id: 'D', label: '' }],
+          correctAnswer: sec.type === 'INTEGER' ? '0' : 'A',
+          fullMarks: sec.fullMarks !== undefined ? sec.fullMarks : 4,
+          partialMarks: sec.partialMarks !== undefined ? sec.partialMarks : 1,
+          wrongMarks: sec.wrongMarks !== undefined ? sec.wrongMarks : -1
+        });
+        recalcGlobalQuestionNumbers();
+        persistDraftToStorage();
+        renderWizardModal();
+      }
+
+      function recalcGlobalQuestionNumbers() {
+        let num = 1;
+        (adminState.editingExam.subjects || []).forEach(s => {
+          (s.questions || []).forEach(q => {
+            q.questionNumber = num++;
+          });
+        });
+      }
+
       function closeWizardModal() {
         document.getElementById('builderModal').style.display = 'none';
       }
@@ -712,15 +853,244 @@
           return;
         }
         try {
+          exam.status = 'PUBLISHED';
           await callAdmin('saveExam', { token: adminState.token, data: exam });
           localStorage.removeItem(DRAFT_STORAGE_KEY);
           adminState.editingExam = null;
           closeWizardModal();
-          alert('✅ Exam & all questions/options saved to cloud successfully!');
+          alert('✅ Exam & all questions/options saved to cloud successfully! Live for assigned class.');
           await hydrateAdmin();
         } catch (e) {
           alert('Error saving exam: ' + e.message);
         }
+      }
+
+      // ==========================================
+      // BULK UPLOAD MODAL & CSV PARSER ENGINE
+      // ==========================================
+      function openBulkUploadModal() {
+        const modal = document.getElementById('bulkUploadModal');
+        const currentSubject = adminState.editingExam.subjects[adminState.activeSubjectIndex];
+        const activeSubSec = currentSubject.subSections[adminState.activeSubSecIndex];
+        const isInteger = activeSubSec.type === 'INTEGER';
+        const isMulti = activeSubSec.type === 'MULTI_CORRECT';
+
+        modal.style.display = 'flex';
+        modal.className = 'modal-backdrop';
+        modal.innerHTML = `
+          <div class="modal-content" style="max-width:850px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:12px; margin-bottom:16px;">
+              <div>
+                <span class="badge" style="background:#5ec8ff; color:#03111d; font-weight:bold;">Bulk Question Uploader</span>
+                <h3 style="margin:4px 0 0;">Upload for: ${escapeHtml(currentSubject.subjectName)} > ${escapeHtml(activeSubSec.name)}</h3>
+              </div>
+              <button type="button" class="btn btn-secondary" onclick="closeBulkUploadModal()">Cancel</button>
+            </div>
+
+            <!-- Expected Format Guide -->
+            <div class="stack" style="margin-bottom:14px;">
+              <label style="font-size:0.85rem; font-weight:600; color:#7bffcf;">Expected CSV / Tab-Separated Columns:</label>
+              ${isInteger ? `
+                <div class="bulk-sample-box">
+                  Question Text | Correct Numerical Answer | Optional Image URL<br/>
+                  Example: What is the acceleration due to gravity on earth? | 9.8 | https://example.com/gravity.png
+                </div>
+              ` : `
+                <div class="bulk-sample-box">
+                  Question Text | Option A | Option B | Option C | Option D | Correct Answer (${isMulti ? 'e.g. AB or ACD' : 'A, B, C, or D'}) | Optional Image URL<br/>
+                  Example: Which gas is most abundant in Earth's atmosphere? | Nitrogen | Oxygen | Argon | CO2 | A | https://example.com/atm.png
+                </div>
+              `}
+            </div>
+
+            <!-- Paste Input Area -->
+            <div class="field" style="margin-bottom:14px;">
+              <label style="font-weight:600; font-size:0.85rem;">Paste rows from Excel, Google Sheets, or CSV (One line per question):</label>
+              <textarea id="bulkPasteInput" class="textarea" style="min-height:160px; font-family:monospace; font-size:0.85rem;" placeholder="Paste questions here..."></textarea>
+            </div>
+
+            <!-- File Selector Input -->
+            <div class="field" style="margin-bottom:16px;">
+              <label style="font-size:0.8rem; color:#8ea0bf;">Or Upload a .CSV / .TXT File from Computer:</label>
+              <input type="file" id="bulkFileInput" accept=".csv,.txt,.tsv" class="input" onchange="handleBulkFileSelect(this)" />
+            </div>
+
+            <!-- Action Controls -->
+            <div class="row" style="justify-content:space-between; align-items:center; border-top:1px solid rgba(255,255,255,0.1); padding-top:14px;">
+              <div class="row">
+                <label style="font-size:0.85rem; cursor:pointer;">
+                  <input type="radio" name="bulkImportMode" value="REPLACE" checked /> Replace existing questions in this sub-section
+                </label>
+                <label style="font-size:0.85rem; cursor:pointer; margin-left:14px;">
+                  <input type="radio" name="bulkImportMode" value="APPEND" /> Append to existing
+                </label>
+              </div>
+              <div class="row">
+                <button type="button" class="btn btn-secondary" onclick="closeBulkUploadModal()">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="executeBulkImport()">🚀 Process & Import Questions</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      function closeBulkUploadModal() {
+        document.getElementById('bulkUploadModal').style.display = 'none';
+      }
+
+      function handleBulkFileSelect(input) {
+        if (!input.files || !input.files[0]) return;
+        const file = input.files[0];
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          document.getElementById('bulkPasteInput').value = e.target.result;
+        };
+        reader.readAsText(file);
+      }
+
+      function downloadSubSectionCsvTemplate() {
+        const currentSubject = adminState.editingExam.subjects[adminState.activeSubjectIndex];
+        const activeSubSec = currentSubject.subSections[adminState.activeSubSecIndex];
+        const isInteger = activeSubSec.type === 'INTEGER';
+        const isMulti = activeSubSec.type === 'MULTI_CORRECT';
+
+        let csvContent = '';
+        if (isInteger) {
+          csvContent = 'Question Text,Correct Numerical Answer,Optional Image URL\n' +
+            '"What is the square root of 144?",12,""\n' +
+            '"Calculate 15 * 6",90,""';
+        } else {
+          csvContent = 'Question Text,Option A,Option B,Option C,Option D,Correct Answer,Optional Image URL\n' +
+            `"What is the capital of France?","Berlin","Madrid","Paris","Rome","C",""\n` +
+            `"Which planet is known as the Red Planet?","Venus","Mars","Jupiter","Saturn","${isMulti ? 'B' : 'B'}",""`;
+        }
+
+        downloadFile(`${currentSubject.subjectName}_${activeSubSec.name}_template.csv`, csvContent);
+      }
+
+      function executeBulkImport() {
+        const rawText = document.getElementById('bulkPasteInput').value.trim();
+        if (!rawText) {
+          alert('Please paste or upload question lines first.');
+          return;
+        }
+
+        const currentSubject = adminState.editingExam.subjects[adminState.activeSubjectIndex];
+        const activeSubSec = currentSubject.subSections[adminState.activeSubSecIndex];
+        const isInteger = activeSubSec.type === 'INTEGER';
+        const isMulti = activeSubSec.type === 'MULTI_CORRECT';
+        const mode = document.querySelector('input[name="bulkImportMode"]:checked').value;
+
+        const lines = rawText.split(/\r?\n/).filter(line => line.trim().length > 0);
+        const parsedQuestions = [];
+
+        lines.forEach((line, idx) => {
+          // If first line is header row, skip
+          if (idx === 0 && (line.toLowerCase().includes('question') || line.toLowerCase().includes('option a'))) {
+            return;
+          }
+
+          // Parse delimited by comma or tab or pipe
+          let cols = [];
+          if (line.includes('\t')) {
+            cols = line.split('\t').map(c => c.trim().replace(/^["']|["']$/g, ''));
+          } else if (line.includes('|')) {
+            cols = line.split('|').map(c => c.trim().replace(/^["']|["']$/g, ''));
+          } else {
+            // CSV split handling quotes
+            cols = parseCsvLine(line);
+          }
+
+          if (!cols || !cols[0]) return;
+
+          if (isInteger) {
+            const qText = cols[0];
+            const correctVal = cols[1] || '0';
+            const imgUrl = cols[2] || '';
+            parsedQuestions.push({
+              questionId: 'q_' + Date.now() + '_' + (idx + 1),
+              subSectionName: activeSubSec.name,
+              questionNumber: 1,
+              questionType: 'INTEGER',
+              questionText: qText,
+              imageUrl: imgUrl,
+              options: [],
+              correctAnswer: correctVal,
+              fullMarks: activeSubSec.fullMarks !== undefined ? activeSubSec.fullMarks : 4,
+              partialMarks: 0,
+              wrongMarks: activeSubSec.wrongMarks !== undefined ? activeSubSec.wrongMarks : 0
+            });
+          } else {
+            const qText = cols[0];
+            const optA = cols[1] || '';
+            const optB = cols[2] || '';
+            const optC = cols[3] || '';
+            const optD = cols[4] || '';
+            const correctAns = (cols[5] || 'A').toUpperCase().replace(/[^A-D]/g, '');
+            const imgUrl = cols[6] || '';
+
+            parsedQuestions.push({
+              questionId: 'q_' + Date.now() + '_' + (idx + 1),
+              subSectionName: activeSubSec.name,
+              questionNumber: 1,
+              questionType: activeSubSec.type,
+              questionText: qText,
+              imageUrl: imgUrl,
+              options: [
+                { id: 'A', label: optA },
+                { id: 'B', label: optB },
+                { id: 'C', label: optC },
+                { id: 'D', label: optD }
+              ],
+              correctAnswer: correctAns || 'A',
+              fullMarks: activeSubSec.fullMarks !== undefined ? activeSubSec.fullMarks : 4,
+              partialMarks: activeSubSec.partialMarks !== undefined ? activeSubSec.partialMarks : 1,
+              wrongMarks: activeSubSec.wrongMarks !== undefined ? activeSubSec.wrongMarks : -1
+            });
+          }
+        });
+
+        if (!parsedQuestions.length) {
+          alert('Could not parse questions. Please check the column format and try again.');
+          return;
+        }
+
+        if (!currentSubject.questions) currentSubject.questions = [];
+
+        if (mode === 'REPLACE') {
+          // Remove only existing questions from this sub-section
+          currentSubject.questions = currentSubject.questions.filter(q => q.subSectionName !== activeSubSec.name).concat(parsedQuestions);
+        } else {
+          currentSubject.questions = currentSubject.questions.concat(parsedQuestions);
+        }
+
+        // Update count on subSection
+        activeSubSec.count = currentSubject.questions.filter(q => q.subSectionName === activeSubSec.name).length;
+
+        recalcGlobalQuestionNumbers();
+        persistDraftToStorage();
+        closeBulkUploadModal();
+        alert(`✅ Successfully imported ${parsedQuestions.length} questions into ${activeSubSec.name}!`);
+        renderWizardModal();
+      }
+
+      function parseCsvLine(line) {
+        const result = [];
+        let insideQuote = false;
+        let entry = '';
+        for (let i = 0; i < line.length; i++) {
+          const char = line[i];
+          if (char === '"') {
+            insideQuote = !insideQuote;
+          } else if (char === ',' && !insideQuote) {
+            result.push(entry.trim().replace(/^["']|["']$/g, ''));
+            entry = '';
+          } else {
+            entry += char;
+          }
+        }
+        result.push(entry.trim().replace(/^["']|["']$/g, ''));
+        return result;
       }
 
       // ==========================================
@@ -745,7 +1115,7 @@
                   <option value="">-- Choose Exam --</option>
                   ${(adminState.exams || []).map((exam) => `
                     <option value="${escapeAttribute(exam.examId)}" ${adminState.selectedAnalyticsExamId === exam.examId ? 'selected' : ''}>
-                      ${escapeHtml(exam.examName)}
+                      ${escapeHtml(exam.examName)} (${exam.targetClass || 'All Classes'})
                     </option>
                   `).join('')}
                 </select>
@@ -955,11 +1325,25 @@
         const exam = await callAdmin('getExamDetail', { token: adminState.token, examId });
         const startVal = exam.availabilityStart ? exam.availabilityStart.slice(0, 16) : '';
         const endVal = exam.availabilityEnd ? exam.availabilityEnd.slice(0, 16) : '';
+        const classList = (adminState.classes || []).map(c => c.className).filter(Boolean);
+        const uniqueClasses = Array.from(new Set(['ALL', 'Class 10', 'Class 11', 'Class 12', ...classList]));
 
         openDrawer(`
           <div class="stack">
             <h3 style="margin:0;">Exam Settings: ${escapeHtml(exam.examName)}</h3>
             ${renderField('Exam Name', 'settingExamName', exam.examName || '')}
+            
+            <div class="field">
+              <label style="font-weight:600; color:#7bffcf;">🎯 Target Class / Grade</label>
+              <select id="settingTargetClass" class="select" style="font-weight:bold;">
+                ${uniqueClasses.map(cls => `
+                  <option value="${escapeAttribute(cls)}" ${(exam.targetClass || 'ALL') === cls ? 'selected' : ''}>
+                    ${cls === 'ALL' ? '🌟 All Enrolled Classes (Whole School)' : escapeHtml(cls)}
+                  </option>
+                `).join('')}
+              </select>
+            </div>
+
             ${renderField('Exam Date', 'settingExamDate', exam.examDate || '', 'date')}
             
             <div class="panel" style="background:rgba(255,255,255,0.03); border:1px solid rgba(145,179,255,0.2);">
@@ -975,7 +1359,7 @@
             ${renderOptionField('Exam Mode', 'settingMode', exam.mode || 'FULL_ONLINE_EXAM', EXAM_MODE_OPTIONS)}
             ${renderOptionField('Result Publication', 'settingResultMode', exam.resultMode || 'IMMEDIATE', RESULT_MODE_OPTIONS)}
             ${renderSelectField('Exam Status', 'settingExamStatus', exam.status || 'PUBLISHED', EXAM_STATUS_OPTIONS)}
-            ${renderField('Assigned Student IDs (Leave empty for ALL students)', 'settingAssignedIds', (exam.assignedStudentIds || []).join(',') || '')}
+            ${renderField('Assigned Student IDs (Leave empty for ALL students in Target Class)', 'settingAssignedIds', (exam.assignedStudentIds || []).join(',') || '')}
 
             <div class="row">
               <button type="button" class="btn btn-primary" onclick="saveExamSettings('${escapeJs(exam.examId)}')">Save Settings</button>
@@ -988,13 +1372,21 @@
       async function saveExamSettings(examId) {
         const existing = await callAdmin('getExamDetail', { token: adminState.token, examId });
         let assigned = document.getElementById('settingAssignedIds').value.split(',').map((item) => item.trim()).filter(Boolean);
+        const targetClass = document.getElementById('settingTargetClass').value;
+
         if (!assigned.length) {
-          assigned = (adminState.students || []).filter(s => s.status === 'ACTIVE').map(s => s.studentId);
+          const all = (adminState.students || []).filter(s => s.status === 'ACTIVE');
+          if (!targetClass || targetClass === 'ALL') {
+            assigned = all.map(s => s.studentId);
+          } else {
+            assigned = all.filter(s => String(s.className).toLowerCase() === targetClass.toLowerCase()).map(s => s.studentId);
+          }
         }
 
         const payload = {
           ...existing,
           examName: document.getElementById('settingExamName').value.trim(),
+          targetClass: targetClass,
           examDate: document.getElementById('settingExamDate').value,
           durationMinutes: Number(document.getElementById('settingDurationMinutes').value) || 90,
           availabilityStart: document.getElementById('settingAvailabilityStart').value ? new Date(document.getElementById('settingAvailabilityStart').value).toISOString() : '',
