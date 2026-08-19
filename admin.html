@@ -282,28 +282,31 @@
             </div>
             <div class="list">
               ${(adminState.exams || []).map((exam) => {
-                const totalQ = (exam.subjects || []).reduce((sum, s) => sum + (s.questions ? s.questions.length : 0), 0);
+                const totalQ = exam.totalQuestions !== undefined ? exam.totalQuestions : (exam.subjects || []).reduce((sum, s) => sum + (s.questions ? s.questions.length : 0), 0);
                 const subNames = (exam.subjects || []).map(s => s.subjectName).join(', ');
                 const targetDisplay = exam.targetClass && exam.targetClass !== 'ALL' ? exam.targetClass : 'All Classes';
+                const isLive = exam.status === 'PUBLISHED' || exam.status === 'ACTIVE' || exam.status === 'LIVE';
                 return `
                   <div class="exam-card">
                     <div class="stack">
                       <div class="row">
                         <strong style="font-size:1.15rem;">${escapeHtml(exam.examName)}</strong>
                         <span class="badge" style="background:#5ec8ff/20; color:#5ec8ff;">Target: ${escapeHtml(targetDisplay)}</span>
-                        <span class="badge" style="background:${exam.status === 'PUBLISHED' ? '#10b981/20' : 'rgba(255,255,255,0.1)'}; color:${exam.status === 'PUBLISHED' ? '#10b981' : '#fff'};">${escapeHtml(exam.status)}</span>
-                        <span class="badge">${totalQ} Questions</span>
+                        <span class="badge" style="background:${isLive ? '#10b981/20' : 'rgba(255,255,255,0.1)'}; color:${isLive ? '#10b981' : '#fff'}; font-weight:700;">${isLive ? '🟢 LIVE' : '⏸️ OFFLINE / DRAFT'}</span>
+                        <span class="badge" style="background:rgba(245, 158, 11, 0.2); color:#f59e0b; font-weight:700;">📝 ${totalQ} Questions</span>
                       </div>
                       <div class="muted">
-                        📚 Subjects: <strong>${escapeHtml(subNames || 'General')}</strong> · 📅 Date: ${escapeHtml(exam.examDate)} · ⏱️ Duration: ${escapeHtml(exam.durationMinutes)} min 
-                        ${exam.availabilityStart ? `· 🟢 Live: ${new Date(exam.availabilityStart).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}` : ''}
-                        ${exam.availabilityEnd ? `· 🛑 Cutoff: ${new Date(exam.availabilityEnd).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}` : ''}
+                        📚 Subjects: <strong>${escapeHtml(subNames || 'General')}</strong> · ⏱️ Duration: <strong>${escapeHtml(exam.durationMinutes)} min</strong>
                       </div>
                     </div>
                     <div class="row">
                       <button type="button" class="btn btn-primary" onclick="openExistingExamWizard('${escapeJs(exam.examId)}')">📝 Edit & Bulk Upload Questions (${totalQ})</button>
-                      <button type="button" class="btn btn-secondary" onclick="openExamSettingsDrawer('${escapeJs(exam.examId)}')">⚙️ Class & Timing</button>
-                      <button type="button" class="btn btn-secondary" onclick="setExamStatus('${exam.examId}', 'PUBLISHED')">Publish Live</button>
+                      ${isLive ? `
+                        <button type="button" class="btn" style="background:#ef4444; color:#fff;" onclick="setExamStatus('${exam.examId}', 'DRAFT')">⏸️ Turn Offline</button>
+                      ` : `
+                        <button type="button" class="btn" style="background:#10b981; color:#fff; font-weight:700;" onclick="setExamStatus('${exam.examId}', 'PUBLISHED')">⚡ GO LIVE NOW</button>
+                      `}
+                      <button type="button" class="btn btn-secondary" onclick="openExamSettingsDrawer('${escapeJs(exam.examId)}')">⚙️ Class Settings</button>
                       <button type="button" class="btn btn-secondary" onclick="duplicateExam('${exam.examId}')">Duplicate</button>
                       <button type="button" class="btn btn-danger" onclick="removeExam('${exam.examId}')">Delete</button>
                     </div>
@@ -378,8 +381,8 @@
         let exam = await callAdmin('getExamDetail', { token: adminState.token, examId });
         adminState.editingExam = JSON.parse(JSON.stringify(exam));
         adminState.activeSubjectIndex = 0;
-        adminState.activeSubSecIndex = 0;
-        const totalQ = adminState.editingExam.subjects.reduce((sum, s) => sum + (s.questions ? s.questions.length : 0), 0);
+        adminState.activeSubSecIndex = -1;
+        const totalQ = adminState.editingExam.totalQuestions !== undefined ? adminState.editingExam.totalQuestions : adminState.editingExam.subjects.reduce((sum, s) => sum + (s.questions ? s.questions.length : 0), 0);
         adminState.wizardStep = totalQ > 0 ? 'questions' : 'structure';
         persistDraftToStorage();
         renderWizardModal();
@@ -566,29 +569,28 @@
         let globalQNum = 1;
 
         exam.subjects.forEach(sub => {
-          // If questions already exist and match count, preserve them
           const existingQs = sub.questions || [];
-          const generatedQuestions = [];
-          
-          (sub.subSections || []).forEach(sec => {
-            const count = Number(sec.count || 5);
-            // find existing questions for this sub section
-            const secExisting = existingQs.filter(q => q.subSectionName === sec.name);
-            for (let i = 0; i < count; i++) {
-              if (secExisting[i]) {
-                const preserved = secExisting[i];
-                preserved.questionNumber = globalQNum;
-                preserved.questionType = sec.type;
-                preserved.fullMarks = sec.fullMarks !== undefined ? sec.fullMarks : 4;
-                preserved.partialMarks = sec.partialMarks !== undefined ? sec.partialMarks : 1;
-                preserved.wrongMarks = sec.wrongMarks !== undefined ? sec.wrongMarks : -1;
-                generatedQuestions.push(preserved);
-              } else {
+          if (existingQs.length > 0) {
+            // ALWAYS preserve existing questions! Never truncate or overwrite!
+            existingQs.forEach(q => {
+              q.questionNumber = globalQNum++;
+            });
+            // Sync subsection counts to existing questions
+            (sub.subSections || []).forEach(sec => {
+              const matching = existingQs.filter(q => (q.subSectionName || '').trim().toLowerCase() === (sec.name || '').trim().toLowerCase());
+              sec.count = matching.length;
+            });
+          } else {
+            // Only generate skeletons if NO questions exist
+            const generatedQuestions = [];
+            (sub.subSections || []).forEach(sec => {
+              const count = Number(sec.count || 5);
+              for (let i = 0; i < count; i++) {
                 generatedQuestions.push({
-                  questionId: 'q_' + Date.now() + '_' + globalQNum,
+                  questionId: 'q_' + Date.now() + '_' + globalQNum + '_' + Math.floor(Math.random() * 1000),
                   subSectionName: sec.name,
                   questionNumber: globalQNum,
-                  questionType: sec.type,
+                  questionType: sec.type || 'SINGLE_CORRECT',
                   questionText: '',
                   imageUrl: '',
                   options: [
@@ -602,16 +604,16 @@
                   partialMarks: sec.partialMarks !== undefined ? sec.partialMarks : 1,
                   wrongMarks: sec.wrongMarks !== undefined ? sec.wrongMarks : -1
                 });
+                globalQNum++;
               }
-              globalQNum++;
-            }
-          });
-          sub.questions = generatedQuestions;
+            });
+            sub.questions = generatedQuestions;
+          }
         });
 
         adminState.wizardStep = 'questions';
         adminState.activeSubjectIndex = 0;
-        adminState.activeSubSecIndex = 0;
+        adminState.activeSubSecIndex = -1; // Default to whole subject view so all questions are immediately visible
         persistDraftToStorage();
         renderWizardModal();
       }
@@ -1154,8 +1156,13 @@
             // Auto-match or create sub-section if not exists
             let matchedSec = subSections.find(s => s.name.toLowerCase() === secName.toLowerCase());
             if (!matchedSec) {
-              matchedSec = subSections[0] || { name: secName || 'Section 1', type: qType, fullMarks: fullM, wrongMarks: wrongM };
-              secName = matchedSec.name;
+              if (secName) {
+                matchedSec = { name: secName, type: qType, count: 0, fullMarks: fullM, partialMarks: (qType === 'MULTI_CORRECT' ? 1 : 0), wrongMarks: wrongM };
+                subSections.push(matchedSec);
+              } else {
+                matchedSec = subSections[0] || { name: 'Section 1', type: qType, count: 0, fullMarks: fullM, partialMarks: 0, wrongMarks: wrongM };
+                secName = matchedSec.name;
+              }
             }
 
             if (qType === 'INTEGER' || matchedSec.type === 'INTEGER') {
@@ -1542,8 +1549,6 @@
 
       async function openExamSettingsDrawer(examId) {
         const exam = await callAdmin('getExamDetail', { token: adminState.token, examId });
-        const startVal = exam.availabilityStart ? exam.availabilityStart.slice(0, 16) : '';
-        const endVal = exam.availabilityEnd ? exam.availabilityEnd.slice(0, 16) : '';
         const classList = (adminState.classes || []).map(c => c.className).filter(Boolean);
         const uniqueClasses = Array.from(new Set(['ALL', 'Class 10', 'Class 11', 'Class 12', ...classList]));
 
@@ -1563,18 +1568,7 @@
               </select>
             </div>
 
-            ${renderField('Exam Date', 'settingExamDate', exam.examDate || '', 'date')}
-            
-            <div class="panel" style="background:rgba(255,255,255,0.03); border:1px solid rgba(145,179,255,0.2);">
-              <h4 style="margin:0 0 8px; color:var(--accent);">🕒 Timed Window & Duration Settings</h4>
-              <p class="muted" style="margin:0 0 12px; font-size:0.85rem;">
-                Students can start between <strong>Live Start</strong> and <strong>Entry Cutoff</strong>. Each student gets their full allocated <strong>Duration</strong> from their exact start time.
-              </p>
-              ${renderField('Exam Live Start Time (e.g. 07:00 AM)', 'settingAvailabilityStart', startVal, 'datetime-local')}
-              ${renderField('Exam Entry Cutoff Time (e.g. 07:30 AM)', 'settingAvailabilityEnd', endVal, 'datetime-local')}
-              ${renderField('Duration Per Student (Minutes)', 'settingDurationMinutes', exam.durationMinutes || 90, 'number')}
-            </div>
-
+            ${renderField('Duration Per Student (Minutes)', 'settingDurationMinutes', exam.durationMinutes || 90, 'number')}
             ${renderOptionField('Exam Mode', 'settingMode', exam.mode || 'FULL_ONLINE_EXAM', EXAM_MODE_OPTIONS)}
             ${renderOptionField('Result Publication', 'settingResultMode', exam.resultMode || 'IMMEDIATE', RESULT_MODE_OPTIONS)}
             ${renderSelectField('Exam Status', 'settingExamStatus', exam.status || 'PUBLISHED', EXAM_STATUS_OPTIONS)}
@@ -1606,10 +1600,9 @@
           ...existing,
           examName: document.getElementById('settingExamName').value.trim(),
           targetClass: targetClass,
-          examDate: document.getElementById('settingExamDate').value,
           durationMinutes: Number(document.getElementById('settingDurationMinutes').value) || 90,
-          availabilityStart: document.getElementById('settingAvailabilityStart').value ? new Date(document.getElementById('settingAvailabilityStart').value).toISOString() : '',
-          availabilityEnd: document.getElementById('settingAvailabilityEnd').value ? new Date(document.getElementById('settingAvailabilityEnd').value).toISOString() : '',
+          availabilityStart: '',
+          availabilityEnd: '',
           mode: document.getElementById('settingMode').value.trim(),
           resultMode: document.getElementById('settingResultMode').value.trim(),
           status: document.getElementById('settingExamStatus').value.trim(),

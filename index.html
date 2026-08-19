@@ -146,57 +146,37 @@
               <p class="muted">Click <strong>Start Exam Now</strong> to begin. Your individual countdown timer will start immediately.</p>
             </div>
             <div class="grid cards-2">
-              <div class="card kpi"><span class="muted">Available Exams</span><strong>${state.exams.length}</strong></div>
+              <div class="card kpi"><span class="muted">Available Live Exams</span><strong>${state.exams.length}</strong></div>
               <div class="card kpi"><span class="muted">Admission / Roll #</span><strong style="font-size:1.2rem;">${escapeHtml(state.student.admissionNumber)}</strong></div>
             </div>
           </div>
           <div class="panel">
             <div class="toolbar" style="margin-bottom:16px;">
-              <h3 style="margin:0;">Your Active Exams</h3>
+              <h3 style="margin:0;">Your Live Exams</h3>
               <button class="btn btn-secondary" onclick="refreshStudentState()">Refresh</button>
             </div>
             <div class="list">
-              ${state.exams.length ? state.exams.map(renderExamCard).join('') : `<div class="empty">No active exams right now. If your exam has a scheduled start time (e.g. 7:00 AM), it will unlock at that exact time.</div>`}
+              ${state.exams.length ? state.exams.map(renderExamCard).join('') : `<div class="empty">No live exams available right now. Your administrator/teacher will activate the exam soon.</div>`}
             </div>
           </div>
         `;
       }
 
       function renderExamCard(exam) {
-        const liveStart = exam.availabilityStart ? new Date(exam.availabilityStart) : null;
-        const entryEnd = exam.availabilityEnd ? new Date(exam.availabilityEnd) : null;
-        const now = new Date();
-
-        const isBeforeLive = liveStart && now < liveStart;
-        const isAfterEntry = entryEnd && now > entryEnd;
-
         return `
           <div class="exam-card">
             <div class="stack">
               <div class="row">
                 <strong style="font-size:1.15rem;">${escapeHtml(exam.examName)}</strong>
-                <span class="badge">${escapeHtml(exam.mode)}</span>
+                <span class="badge" style="background:#10b981/20; color:#10b981; font-weight:700;">🟢 LIVE</span>
+                <span class="badge">${escapeHtml(exam.mode || 'ONLINE EXAM')}</span>
               </div>
               <div class="row muted" style="gap:16px; margin-top:4px;">
-                <span>📅 Date: ${escapeHtml(exam.examDate)}</span>
                 <span>⏱️ Duration: <strong>${escapeHtml(exam.durationMinutes)} mins</strong></span>
               </div>
-              ${liveStart || entryEnd ? `
-                <div class="timing-pill">
-                  🕒 <strong>Time Window:</strong> 
-                  ${liveStart ? `Live from ${liveStart.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}` : 'Open now'}
-                  ${entryEnd ? ` until ${entryEnd.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}` : ''}
-                </div>
-              ` : ''}
             </div>
             <div class="row">
-              ${isBeforeLive ? `
-                <button class="btn btn-secondary" disabled>Opens at ${liveStart.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</button>
-              ` : isAfterEntry ? `
-                <button class="btn btn-danger" disabled>Entry Closed</button>
-              ` : `
-                <button class="btn btn-primary" onclick="startExamFlow('${exam.examId}')">Start Exam Now →</button>
-              `}
+              <button class="btn btn-primary" onclick="startExamFlow('${exam.examId}')">Start Exam Now →</button>
             </div>
           </div>
         `;
@@ -402,8 +382,14 @@
       async function startExamFlow(examId) {
         try {
           const bundle = await callServer('startExam', { studentId: state.student.studentId, examId });
+          if (bundle && bundle.review) {
+            setState({ result: bundle, view: 'result', isSubmitting: false, error: '' });
+            return;
+          }
           applyAttemptBundle(bundle);
-        } catch (e) {}
+        } catch (e) {
+          setState({ error: e && e.message ? e.message : 'Unable to start exam' });
+        }
       }
 
       function setSubject(subjectId) {
