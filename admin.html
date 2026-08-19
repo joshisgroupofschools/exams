@@ -192,7 +192,7 @@
             <div class="stack">
               <span class="badge">Teacher & Administration Portal</span>
               <h2 style="margin:10px 0 8px; font-size:clamp(2rem, 4vw, 3.5rem); line-height:1.05;">Admin Portal Login</h2>
-              <p class="muted">Default initial password is: <strong>Admin@1</strong></p>
+              <p class="muted">Enter your administrator password to access the exam builder and analytics.</p>
             </div>
             <div class="panel login-card">
               <div class="stack">
@@ -1402,34 +1402,67 @@
       }
 
       async function loginAdmin() {
-        const password = document.getElementById('adminPassword').value;
-        const result = await callAdmin('adminLogin', { password });
-        localStorage.setItem(TOKEN_STORAGE_KEY, result.token);
-        sessionStorage.setItem('adminToken', result.token);
-        adminState.token = result.token;
-        await hydrateAdmin();
+        const passInput = document.getElementById('adminPassword');
+        const password = passInput ? passInput.value : '';
+        if (!password) {
+          adminState.error = 'Please enter the admin password.';
+          renderAdmin();
+          return;
+        }
+        try {
+          const result = await callAdmin('adminLogin', { password });
+          if (!result || !result.token) {
+            throw new Error('Login failed: No authorization token received.');
+          }
+          localStorage.setItem(TOKEN_STORAGE_KEY, result.token);
+          sessionStorage.setItem('adminToken', result.token);
+          adminState.token = result.token;
+          adminState.error = '';
+          await hydrateAdmin();
+        } catch (err) {
+          adminState.error = err && err.message ? err.message : 'Invalid password or connection error.';
+          renderAdmin();
+        }
       }
 
       async function logoutAdmin() {
         try {
-          await callAdmin('adminLogout', { token: adminState.token });
+          if (adminState.token) {
+            await callAdmin('adminLogout', { token: adminState.token });
+          }
+        } catch (e) {
         } finally {
           localStorage.removeItem(TOKEN_STORAGE_KEY);
           sessionStorage.removeItem('adminToken');
-          setAdminState({ token: '', dashboard: null, analytics: null, students: [], exams: [], classes: [] });
+          setAdminState({ token: '', error: '', dashboard: null, analytics: null, students: [], exams: [], classes: [] });
         }
       }
 
       async function hydrateAdmin() {
         if (!adminState.token) return;
-        const appState = await callAdmin('getAdminAppState', { token: adminState.token });
-        setAdminState({
-          dashboard: appState.dashboard,
-          students: appState.students,
-          exams: appState.exams,
-          classes: (appState.dashboard && appState.dashboard.classes) || [],
-          analytics: appState.analytics
-        });
+        try {
+          const appState = await callAdmin('getAdminAppState', { token: adminState.token });
+          setAdminState({
+            dashboard: appState.dashboard,
+            students: appState.students || [],
+            exams: appState.exams || [],
+            classes: (appState.dashboard && appState.dashboard.classes) || [],
+            analytics: appState.analytics || null,
+            error: ''
+          });
+        } catch (err) {
+          const msg = err && err.message ? err.message : '';
+          if (msg.includes('expired') || msg.includes('invalid') || msg.includes('Unauthorized')) {
+            localStorage.removeItem(TOKEN_STORAGE_KEY);
+            sessionStorage.removeItem('adminToken');
+            adminState.token = '';
+            adminState.error = 'Session expired. Please enter password to log in again.';
+            renderAdmin();
+          } else {
+            adminState.error = msg || 'Could not load dashboard data.';
+            renderAdmin();
+          }
+        }
       }
 
       function switchAdminView(view) {
