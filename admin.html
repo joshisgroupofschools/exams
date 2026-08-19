@@ -1010,16 +1010,16 @@
 
       function renderBulkFormatGuide(targetVal, currentSubject) {
         const isWhole = targetVal === 'WHOLE_SUBJECT';
-        const subSections = currentSubject.subSections || [];
+        const subSections = currentSubject.subSections || getStandardPatternSubSections();
 
         if (isWhole) {
           return `
-            <label style="font-size:0.85rem; font-weight:600; color:#7bffcf;">Expected Columns for Whole Subject Sheet (Tab-separated or Comma-separated):</label>
+            <label style="font-size:0.85rem; font-weight:600; color:#7bffcf;">Expected Columns for Whole Subject (All 3 Sections in One Sheet):</label>
             <div class="bulk-sample-box">
               SubSection Name | Question Type | Question Text | Option A | Option B | Option C | Option D | Correct Answer | Full Marks | Wrong Marks | Optional Image URL<br/><br/>
-              <strong>Example 1:</strong> Section 1 | SINGLE_CORRECT | Which element has atomic number 1? | Hydrogen | Helium | Lithium | Carbon | A | 1 | 0 | <br/>
-              <strong>Example 2:</strong> Section 2 | MULTI_CORRECT | Which of the following are noble gases? | Helium | Neon | Chlorine | Argon | ABD | 2 | 0 | <br/>
-              <strong>Example 3:</strong> Section 3 | INTEGER | What is the square of 12? | | | | | 144 | 1 | 0 | 
+              <span style="color:#5ec8ff;">Section 1 (Single Correct · 10 Qs):</span> Section 1 | SINGLE_CORRECT | Which element has atomic number 1? | Hydrogen | Helium | Lithium | Carbon | A | 1 | 0 | <br/>
+              <span style="color:#f59e0b;">Section 2 (Multiple Correct · 5 Qs):</span> Section 2 | MULTI_CORRECT | Which of the following are prime numbers? | 2 | 3 | 4 | 5 | AB | 2 | 0 | <br/>
+              <span style="color:#7bffcf;">Section 3 (Numerical / Integer · 5 Qs):</span> Section 3 | INTEGER | Calculate 12 * 12 | | | | | 144 | 1 | 0 | 
             </div>
           `;
         }
@@ -1030,7 +1030,7 @@
 
         if (isInteger) {
           return `
-            <label style="font-size:0.85rem; font-weight:600; color:#7bffcf;">Expected Columns for Numerical/Integer Sub-Section:</label>
+            <label style="font-size:0.85rem; font-weight:600; color:#7bffcf;">Expected Columns for ${escapeHtml(sec.name)} (Numerical/Integer):</label>
             <div class="bulk-sample-box">
               Question Text | Correct Numerical Answer | Optional Image URL<br/>
               Example: Calculate the value of 25 * 4 | 100 | https://example.com/math.png
@@ -1055,26 +1055,49 @@
         if (!textarea) return;
 
         if (isWhole) {
-          const s1 = (currentSubject.subSections && currentSubject.subSections[0]) ? currentSubject.subSections[0].name : 'Section 1';
-          const s2 = (currentSubject.subSections && currentSubject.subSections[1]) ? currentSubject.subSections[1].name : 'Section 2';
-          textarea.value = 
-            `SubSection\tType\tQuestionText\tOptionA\tOptionB\tOptionC\tOptionD\tCorrectAnswer\tFullMarks\tWrongMarks\tImageUrl\n` +
-            `${s1}\tSINGLE_CORRECT\tWhat is the speed of light in vacuum?\t3x10^8 m/s\t3x10^6 m/s\t3x10^5 km/s\t3x10^4 m/s\tA\t4\t-1\t\n` +
-            `${s1}\tSINGLE_CORRECT\tWhich planet is closest to the Sun?\tVenus\tMercury\tEarth\tMars\tB\t4\t-1\t\n` +
-            `${s2}\tMULTI_CORRECT\tWhich of the following are prime numbers?\t2\t3\t4\t5\tABD\t4\t-2\t\n` +
-            `${s2}\tINTEGER\tWhat is 15 multiplied by 8?\t\t\t\t\t120\t4\t0\t`;
+          const subSections = (currentSubject && currentSubject.subSections && currentSubject.subSections.length) 
+            ? currentSubject.subSections 
+            : getStandardPatternSubSections();
+            
+          let lines = ['SubSection\tType\tQuestionText\tOptionA\tOptionB\tOptionC\tOptionD\tCorrectAnswer\tFullMarks\tWrongMarks\tImageUrl'];
+          
+          subSections.forEach(sec => {
+            const count = Number(sec.count) || 5;
+            const isInt = sec.type === 'INTEGER';
+            const isMulti = sec.type === 'MULTI_CORRECT';
+            const fm = sec.fullMarks !== undefined ? sec.fullMarks : (isMulti ? 2 : 1);
+            const wm = sec.wrongMarks !== undefined ? sec.wrongMarks : 0;
+            
+            for (let i = 1; i <= count; i++) {
+              if (isInt) {
+                lines.push(`${sec.name}\tINTEGER\t[${sec.name} Q${i}] Find the value of ${i} * 12\t\t\t\t\t${i * 12}\t${fm}\t${wm}\t`);
+              } else if (isMulti) {
+                lines.push(`${sec.name}\tMULTI_CORRECT\t[${sec.name} Q${i}] Which statements are correct for item ${i}?\tStatement 1\tStatement 2\tStatement 3\tStatement 4\tAB\t${fm}\t${wm}\t`);
+              } else {
+                lines.push(`${sec.name}\tSINGLE_CORRECT\t[${sec.name} Q${i}] What is the correct property for item ${i}?\tOption A\tOption B\tOption C\tOption D\tA\t${fm}\t${wm}\t`);
+              }
+            }
+          });
+          textarea.value = lines.join('\n');
         } else {
-          const sec = currentSubject.subSections[Number(selVal)] || currentSubject.subSections[0];
-          if (sec.type === 'INTEGER') {
-            textarea.value = 
-              `Question Text\tCorrect Answer\tImage URL\n` +
-              `Calculate 20 + 35\t55\t\n` +
-              `What is the square root of 144?\t12\t`;
+          const subSections = (currentSubject && currentSubject.subSections) || [];
+          const sec = subSections[Number(selVal)] || subSections[0] || { name: 'Section 1', type: 'SINGLE_CORRECT', count: 10 };
+          const count = Number(sec.count) || 5;
+          const isInt = sec.type === 'INTEGER';
+          const isMulti = sec.type === 'MULTI_CORRECT';
+          
+          if (isInt) {
+            let lines = ['Question Text\tCorrect Answer\tImage URL'];
+            for (let i = 1; i <= count; i++) {
+              lines.push(`[${sec.name} Q${i}] Calculate ${i} * 15\t${i * 15}\t`);
+            }
+            textarea.value = lines.join('\n');
           } else {
-            textarea.value = 
-              `Question Text\tOption A\tOption B\tOption C\tOption D\tCorrect Answer\tImage URL\n` +
-              `What is the capital of France?\tBerlin\tMadrid\tParis\tRome\tC\t\n` +
-              `Which organ pumps blood in human body?\tLungs\tHeart\tKidney\tBrain\tB\t`;
+            let lines = ['Question Text\tOption A\tOption B\tOption C\tOption D\tCorrect Answer\tImage URL'];
+            for (let i = 1; i <= count; i++) {
+              lines.push(`[${sec.name} Q${i}] Sample question text ${i}\tChoice A\tChoice B\tChoice C\tChoice D\t${isMulti ? 'AB' : 'A'}\t`);
+            }
+            textarea.value = lines.join('\n');
           }
         }
       }
@@ -1095,38 +1118,97 @@
 
       function downloadWholeSubjectCsvTemplate() {
         const currentSubject = adminState.editingExam.subjects[adminState.activeSubjectIndex];
-        const subSections = currentSubject.subSections || [];
-        const s1 = subSections[0] ? subSections[0].name : 'Section 1';
-        const s2 = subSections[1] ? subSections[1].name : 'Section 2';
+        const subSections = (currentSubject && currentSubject.subSections && currentSubject.subSections.length) 
+          ? currentSubject.subSections 
+          : getStandardPatternSubSections();
 
-        let csvContent = 'SubSection Name,Question Type,Question Text,Option A,Option B,Option C,Option D,Correct Answer,Full Marks,Wrong Marks,Optional Image URL\n' +
-          `"${s1}","SINGLE_CORRECT","What is the capital of France?","Berlin","Madrid","Paris","Rome","C",4,-1,""\n` +
-          `"${s1}","SINGLE_CORRECT","Which planet is known as Red Planet?","Venus","Mars","Jupiter","Saturn","B",4,-1,""\n` +
-          `"${s2}","MULTI_CORRECT","Which are prime numbers?","2","3","4","5","ABD",4,-2,""\n` +
-          `"${s2}","INTEGER","What is the value of 12 * 12?","","","","","144",4,0,""`;
+        let rows = ['"SubSection Name","Question Type","Question Text","Option A","Option B","Option C","Option D","Correct Answer","Full Marks","Wrong Marks","Optional Image URL"'];
+        
+        subSections.forEach(sec => {
+          const count = Number(sec.count) || 5;
+          const isInt = sec.type === 'INTEGER';
+          const isMulti = sec.type === 'MULTI_CORRECT';
+          const fm = sec.fullMarks !== undefined ? sec.fullMarks : (isMulti ? 2 : 1);
+          const wm = sec.wrongMarks !== undefined ? sec.wrongMarks : 0;
+          
+          for (let i = 1; i <= count; i++) {
+            if (isInt) {
+              rows.push(`"${sec.name}","INTEGER","[${sec.name} Q${i}] What is the numerical answer?","","","","","${i * 10}","${fm}","${wm}",""`);
+            } else if (isMulti) {
+              rows.push(`"${sec.name}","MULTI_CORRECT","[${sec.name} Q${i}] Which of the following options are correct?","Statement A","Statement B","Statement C","Statement D","AB","${fm}","${wm}",""`);
+            } else {
+              rows.push(`"${sec.name}","SINGLE_CORRECT","[${sec.name} Q${i}] Sample single-choice question text","Option A","Option B","Option C","Option D","A","${fm}","${wm}",""`);
+            }
+          }
+        });
 
-        downloadFile(`${currentSubject.subjectName}_Whole_Subject_Template.csv`, csvContent);
+        const totalQCount = subSections.reduce((sum, s) => sum + (Number(s.count) || 0), 0);
+        downloadFile(`${currentSubject.subjectName.replace(/\s+/g, '_')}_Template_${totalQCount}Qs.csv`, rows.join('\n'));
       }
 
       function downloadSubSectionCsvTemplate() {
         const currentSubject = adminState.editingExam.subjects[adminState.activeSubjectIndex];
         const subSections = currentSubject.subSections || [];
-        const activeSubSec = subSections[adminState.activeSubSecIndex] || subSections[0];
+        const activeSubSec = subSections[adminState.activeSubSecIndex] || subSections[0] || { name: 'Section 1', type: 'SINGLE_CORRECT', count: 10 };
         const isInteger = activeSubSec.type === 'INTEGER';
         const isMulti = activeSubSec.type === 'MULTI_CORRECT';
+        const count = Number(activeSubSec.count) || 5;
 
-        let csvContent = '';
+        let rows = [];
         if (isInteger) {
-          csvContent = 'Question Text,Correct Numerical Answer,Optional Image URL\n' +
-            '"What is the square root of 144?",12,""\n' +
-            '"Calculate 15 * 6",90,""';
+          rows.push('"Question Text","Correct Numerical Answer","Optional Image URL"');
+          for (let i = 1; i <= count; i++) {
+            rows.push(`"[${activeSubSec.name} Q${i}] Numerical question text","${i * 10}",""`);
+          }
         } else {
-          csvContent = 'Question Text,Option A,Option B,Option C,Option D,Correct Answer,Optional Image URL\n' +
-            `"What is the chemical formula for water?","H2O","CO2","NaCl","O2","A",""\n` +
-            `"Which planet has rings?","Mars","Saturn","Venus","Mercury","${isMulti ? 'B' : 'B'}",""`;
+          rows.push('"Question Text","Option A","Option B","Option C","Option D","Correct Answer","Optional Image URL"');
+          for (let i = 1; i <= count; i++) {
+            rows.push(`"[${activeSubSec.name} Q${i}] Question text goes here","Option A","Option B","Option C","Option D","${isMulti ? 'AB' : 'A'}",""`);
+          }
         }
 
-        downloadFile(`${currentSubject.subjectName}_${activeSubSec.name}_template.csv`, csvContent);
+        downloadFile(`${currentSubject.subjectName.replace(/\s+/g, '_')}_${activeSubSec.name.replace(/\s+/g, '_')}_${count}Qs.csv`, rows.join('\n'));
+      }
+
+      function findMatchingSubSection(rawSecName, rawQType, subSections) {
+        if (!subSections || !subSections.length) {
+          return { name: 'Section 1: Single Correct', type: 'SINGLE_CORRECT', fullMarks: 1, partialMarks: 0, wrongMarks: 0 };
+        }
+        
+        const sec = String(rawSecName || '').trim();
+        const secLower = sec.toLowerCase();
+        const typeUpper = String(rawQType || '').trim().toUpperCase();
+
+        // 1. Direct exact name match
+        let direct = subSections.find(s => s.name.trim().toLowerCase() === secLower);
+        if (direct) return direct;
+
+        // 2. Numerical / Integer match (Section 3)
+        if (typeUpper.includes('INT') || typeUpper.includes('NUM') || secLower.includes('section 3') || secLower.includes('sec 3') || secLower.includes('integer') || secLower.includes('numerical') || sec === '3') {
+          let intSec = subSections.find(s => s.type === 'INTEGER' || s.name.toLowerCase().includes('integer') || s.name.toLowerCase().includes('numerical') || s.name.toLowerCase().includes('section 3'));
+          if (intSec) return intSec;
+          if (subSections[2]) return subSections[2];
+        }
+
+        // 3. Multi-Correct match (Section 2)
+        if (typeUpper.includes('MULTI') || secLower.includes('section 2') || secLower.includes('sec 2') || secLower.includes('multi') || sec === '2') {
+          let multiSec = subSections.find(s => s.type === 'MULTI_CORRECT' || s.name.toLowerCase().includes('multi') || s.name.toLowerCase().includes('section 2'));
+          if (multiSec) return multiSec;
+          if (subSections[1]) return subSections[1];
+        }
+
+        // 4. Single-Correct match (Section 1)
+        if (typeUpper.includes('SINGLE') || typeUpper.includes('MCQ') || secLower.includes('section 1') || secLower.includes('sec 1') || secLower.includes('single') || sec === '1') {
+          let singleSec = subSections.find(s => s.type === 'SINGLE_CORRECT' || s.name.toLowerCase().includes('single') || s.name.toLowerCase().includes('section 1'));
+          if (singleSec) return singleSec;
+          if (subSections[0]) return subSections[0];
+        }
+
+        // 5. Partial name substring match
+        let partial = subSections.find(s => s.name.toLowerCase().includes(secLower) || secLower.includes(s.name.toLowerCase()));
+        if (partial) return partial;
+
+        return subSections[0];
       }
 
       function executeBulkImport() {
@@ -1137,7 +1219,9 @@
         }
 
         const currentSubject = adminState.editingExam.subjects[adminState.activeSubjectIndex];
-        const subSections = currentSubject.subSections || [];
+        const subSections = (currentSubject && currentSubject.subSections && currentSubject.subSections.length) 
+          ? currentSubject.subSections 
+          : getStandardPatternSubSections();
         const targetVal = document.getElementById('bulkTargetSelect').value;
         const isWhole = targetVal === 'WHOLE_SUBJECT';
         const activeSubSec = !isWhole ? (subSections[Number(targetVal)] || subSections[0]) : null;
@@ -1147,13 +1231,11 @@
         const parsedQuestions = [];
 
         lines.forEach((line, idx) => {
-          // If first line is header row, skip
           const lower = line.toLowerCase();
-          if (idx === 0 && (lower.includes('question') || lower.includes('option a') || lower.includes('subsection'))) {
+          if (idx === 0 && (lower.includes('question') || lower.includes('option a') || lower.includes('subsection') || lower.includes('type'))) {
             return;
           }
 
-          // Parse delimited by tab or pipe or CSV comma
           let cols = [];
           if (line.includes('\t')) {
             cols = line.split('\t').map(c => c.trim().replace(/^["']|["']$/g, ''));
@@ -1166,18 +1248,6 @@
           if (!cols || !cols.length || !cols[0]) return;
 
           if (isWhole) {
-            // Whole Subject Format:
-            // Col 0: SubSection Name (e.g. "Section 1")
-            // Col 1: Question Type (SINGLE_CORRECT / MULTI_CORRECT / INTEGER)
-            // Col 2: Question Text
-            // Col 3: Option A
-            // Col 4: Option B
-            // Col 5: Option C
-            // Col 6: Option D
-            // Col 7: Correct Answer
-            // Col 8: Full Marks
-            // Col 9: Wrong Marks
-            // Col 10: Image URL
             let secName = cols[0].trim();
             let qType = (cols[1] || 'SINGLE_CORRECT').trim().toUpperCase();
             let qText = cols[2] || '';
@@ -1186,42 +1256,35 @@
             let optC = cols[5] || '';
             let optD = cols[6] || '';
             let correctAns = cols[7] || '';
-            let fullM = cols[8] !== undefined && cols[8] !== '' ? Number(cols[8]) : 4;
-            let wrongM = cols[9] !== undefined && cols[9] !== '' ? Number(cols[9]) : -1;
+            let fullM = cols[8] !== undefined && cols[8] !== '' ? Number(cols[8]) : undefined;
+            let wrongM = cols[9] !== undefined && cols[9] !== '' ? Number(cols[9]) : undefined;
             let imgUrl = cols[10] || '';
 
-            // Auto-match or create sub-section if not exists
-            let matchedSec = subSections.find(s => s.name.toLowerCase() === secName.toLowerCase());
-            if (!matchedSec) {
-              if (secName) {
-                matchedSec = { name: secName, type: qType, count: 0, fullMarks: fullM, partialMarks: (qType === 'MULTI_CORRECT' ? 1 : 0), wrongMarks: wrongM };
-                subSections.push(matchedSec);
-              } else {
-                matchedSec = subSections[0] || { name: 'Section 1', type: qType, count: 0, fullMarks: fullM, partialMarks: 0, wrongMarks: wrongM };
-                secName = matchedSec.name;
-              }
-            }
+            let matchedSec = findMatchingSubSection(secName, qType, subSections);
+            let finalQType = (qType.includes('INT') || qType.includes('NUM') || matchedSec.type === 'INTEGER') 
+              ? 'INTEGER' 
+              : ((qType.includes('MULTI') || matchedSec.type === 'MULTI_CORRECT') ? 'MULTI_CORRECT' : 'SINGLE_CORRECT');
 
-            if (qType === 'INTEGER' || matchedSec.type === 'INTEGER') {
+            if (finalQType === 'INTEGER') {
               parsedQuestions.push({
                 questionId: 'q_' + Date.now() + '_' + (idx + 1) + '_' + Math.floor(Math.random()*1000),
-                subSectionName: secName,
+                subSectionName: matchedSec.name,
                 questionNumber: 1,
                 questionType: 'INTEGER',
-                questionText: qText || optA, // in case user shifted columns
+                questionText: qText || optA,
                 imageUrl: imgUrl,
                 options: [],
-                correctAnswer: correctAns || optB || '0',
-                fullMarks: fullM,
+                correctAnswer: correctAns || optB || optA || '0',
+                fullMarks: fullM !== undefined && !isNaN(fullM) ? fullM : (matchedSec.fullMarks !== undefined ? matchedSec.fullMarks : 1),
                 partialMarks: 0,
-                wrongMarks: wrongM || 0
+                wrongMarks: wrongM !== undefined && !isNaN(wrongM) ? wrongM : (matchedSec.wrongMarks !== undefined ? matchedSec.wrongMarks : 0)
               });
             } else {
               parsedQuestions.push({
                 questionId: 'q_' + Date.now() + '_' + (idx + 1) + '_' + Math.floor(Math.random()*1000),
-                subSectionName: secName,
+                subSectionName: matchedSec.name,
                 questionNumber: 1,
-                questionType: qType || matchedSec.type || 'SINGLE_CORRECT',
+                questionType: finalQType,
                 questionText: qText,
                 imageUrl: imgUrl,
                 options: [
@@ -1230,14 +1293,15 @@
                   { id: 'C', label: optC },
                   { id: 'D', label: optD }
                 ],
-                correctAnswer: String(correctAns || 'A').toUpperCase().replace(/[^A-D]/g, '') || 'A',
-                fullMarks: fullM,
-                partialMarks: (qType === 'MULTI_CORRECT' || matchedSec.type === 'MULTI_CORRECT') ? 1 : 0,
-                wrongMarks: wrongM
+                correctAnswer: (finalQType === 'MULTI_CORRECT') 
+                  ? (String(correctAns || 'AB').toUpperCase().replace(/[^A-D]/g, '') || 'A')
+                  : (String(correctAns || 'A').toUpperCase().replace(/[^A-D]/g, '') || 'A'),
+                fullMarks: fullM !== undefined && !isNaN(fullM) ? fullM : (matchedSec.fullMarks !== undefined ? matchedSec.fullMarks : (finalQType === 'MULTI_CORRECT' ? 2 : 1)),
+                partialMarks: (finalQType === 'MULTI_CORRECT') ? (matchedSec.partialMarks !== undefined ? matchedSec.partialMarks : 1) : 0,
+                wrongMarks: wrongM !== undefined && !isNaN(wrongM) ? wrongM : (matchedSec.wrongMarks !== undefined ? matchedSec.wrongMarks : 0)
               });
             }
           } else {
-            // Specific Sub-Section Format
             const isInteger = activeSubSec.type === 'INTEGER';
             if (isInteger) {
               const qText = cols[0];
@@ -1252,7 +1316,7 @@
                 imageUrl: imgUrl,
                 options: [],
                 correctAnswer: correctVal,
-                fullMarks: activeSubSec.fullMarks !== undefined ? activeSubSec.fullMarks : 4,
+                fullMarks: activeSubSec.fullMarks !== undefined ? activeSubSec.fullMarks : 1,
                 partialMarks: 0,
                 wrongMarks: activeSubSec.wrongMarks !== undefined ? activeSubSec.wrongMarks : 0
               });
@@ -1279,9 +1343,9 @@
                   { id: 'D', label: optD }
                 ],
                 correctAnswer: correctAns || 'A',
-                fullMarks: activeSubSec.fullMarks !== undefined ? activeSubSec.fullMarks : 4,
-                partialMarks: activeSubSec.partialMarks !== undefined ? activeSubSec.partialMarks : 1,
-                wrongMarks: activeSubSec.wrongMarks !== undefined ? activeSubSec.wrongMarks : -1
+                fullMarks: activeSubSec.fullMarks !== undefined ? activeSubSec.fullMarks : (activeSubSec.type === 'MULTI_CORRECT' ? 2 : 1),
+                partialMarks: activeSubSec.partialMarks !== undefined ? activeSubSec.partialMarks : (activeSubSec.type === 'MULTI_CORRECT' ? 1 : 0),
+                wrongMarks: activeSubSec.wrongMarks !== undefined ? activeSubSec.wrongMarks : 0
               });
             }
           }
@@ -1308,7 +1372,6 @@
           }
         }
 
-        // Update counts on each sub-section
         subSections.forEach(sec => {
           sec.count = currentSubject.questions.filter(q => q.subSectionName === sec.name).length;
         });
@@ -2111,5 +2174,8 @@ Kabir Mehta, 9876543214, ADM-105, Class 12, ACTIVE`;
         }
       });
     </script>
+  </body>
+</html>
+
   </body>
 </html>
