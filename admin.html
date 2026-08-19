@@ -37,6 +37,7 @@
     <div id="drawer" class="drawer"></div>
     <div id="builderModal" style="display: none;"></div>
     <div id="bulkUploadModal" style="display: none;"></div>
+    <div id="studentBulkModal" style="display: none;"></div>
 
     <script>
       const BOOTSTRAP = {
@@ -1447,13 +1448,30 @@
       }
 
       function renderStudents() {
+        const classNamesFromState = (adminState.classes || []).map(c => c.className).filter(Boolean);
+        const classNamesFromStudents = (adminState.students || []).map(s => s.className).filter(Boolean);
+        const uniqueClasses = Array.from(new Set(['ALL', ...classNamesFromState, ...classNamesFromStudents])).filter(Boolean);
+        const filterCls = adminState.studentFilterClass || 'ALL';
+
+        const filteredStudents = (adminState.students || []).filter(s => {
+          if (filterCls === 'ALL') return true;
+          return String(s.className).toLowerCase() === filterCls.toLowerCase();
+        });
+
         return `
           <div class="panel">
-            <div class="toolbar" style="margin-bottom:16px;">
-              <h3 style="margin:0;">Student Master Directory</h3>
-              <div class="row">
-                <button type="button" class="btn btn-primary" onclick="openStudentDrawer()">Add Student</button>
-                <button type="button" class="btn btn-secondary" onclick="downloadStudentTemplate()">Template CSV</button>
+            <div class="toolbar" style="margin-bottom:16px; flex-wrap:wrap; gap:12px;">
+              <div>
+                <h3 style="margin:0;">Student Master Directory (${(adminState.students || []).length} Enrolled)</h3>
+                <p class="muted" style="margin:4px 0 0; font-size:0.85rem;">Manage student credentials, login mobile numbers, and class enrollments.</p>
+              </div>
+              <div class="row" style="flex-wrap:wrap; gap:8px;">
+                <select class="select" style="min-width:160px; font-weight:bold;" onchange="adminState.studentFilterClass=this.value; renderAdmin();">
+                  ${uniqueClasses.map(cls => `<option value="${escapeAttribute(cls)}" ${cls === filterCls ? 'selected' : ''}>${cls === 'ALL' ? '🌟 All Classes' : escapeHtml(cls)}</option>`).join('')}
+                </select>
+                <button type="button" class="btn btn-primary" onclick="openStudentDrawer()">+ Add Single Student</button>
+                <button type="button" class="btn btn-primary" style="background:#5ec8ff; color:#07111f; font-weight:bold;" onclick="openStudentBulkUploadModal()">📥 Bulk Upload Students (CSV / Excel)</button>
+                <button type="button" class="btn btn-secondary" onclick="downloadStudentTemplate()">📄 Template CSV</button>
               </div>
             </div>
             <div class="table-wrap">
@@ -1469,16 +1487,16 @@
                   </tr>
                 </thead>
                 <tbody>
-                  ${(adminState.students || []).map((student) => `
+                  ${filteredStudents.length ? filteredStudents.map((student) => `
                     <tr>
                       <td><strong>${escapeHtml(student.studentName)}</strong></td>
                       <td>${escapeHtml(student.mobileNumber)}</td>
                       <td>${escapeHtml(student.admissionNumber)}</td>
-                      <td>${escapeHtml(student.className)}</td>
+                      <td><span class="badge" style="background:rgba(94,200,255,0.15); color:#5ec8ff; font-weight:bold;">${escapeHtml(student.className)}</span></td>
                       <td><span class="badge">${escapeHtml(student.status)}</span></td>
                       <td><button type="button" class="btn btn-secondary" onclick="openStudentDrawerById('${escapeJs(student.studentId)}')">Edit</button></td>
                     </tr>
-                  `).join('')}
+                  `).join('') : `<tr><td colspan="6" class="empty">No students found matching filter.</td></tr>`}
                 </tbody>
               </table>
             </div>
@@ -1836,8 +1854,169 @@
       }
 
       async function downloadStudentTemplate() {
-        const csv = await callAdmin('getStudentTemplateCsv', { token: adminState.token });
-        downloadFile('student-template.csv', csv);
+        const csv = `Student Name,Mobile Number,Admission Number,Class Name,Status\nJohn Doe,9876543210,ADM-101,Class 10,ACTIVE\nPriya Sharma,9876543211,ADM-102,Class 10,ACTIVE\nRahul Verma,9876543212,ADM-103,Class 11,ACTIVE\nAnanya Patel,9876543213,ADM-104,Class 12,ACTIVE`;
+        downloadFile('student-roster-template.csv', csv);
+      }
+
+      function openStudentBulkUploadModal() {
+        const modal = document.getElementById('studentBulkModal');
+        if (!modal) return;
+
+        modal.innerHTML = `
+          <div class="modal-backdrop">
+            <div class="modal-card" style="max-width:850px; width:95vw;">
+              <div class="modal-header">
+                <div>
+                  <h2 style="margin:0; font-size:1.35rem; color:#5ec8ff;">📥 Bulk Upload Students (CSV / Excel)</h2>
+                  <p class="muted" style="margin:4px 0 0; font-size:0.85rem;">
+                    Upload an entire classroom or school student roster in seconds. Supports copy-pasting from Excel / Google Sheets or uploading a CSV file.
+                  </p>
+                </div>
+                <button type="button" class="btn btn-secondary" onclick="closeStudentBulkModal()">✕ Close</button>
+              </div>
+              <div class="modal-body">
+                <!-- Format Instructions -->
+                <div class="bulk-sample-box">
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                    <strong style="color:#fff;">📋 Required Columns (Comma, Tab, or Pipe Separated):</strong>
+                    <button type="button" class="btn btn-secondary" style="font-size:0.75rem; padding:4px 10px;" onclick="loadSampleStudentsIntoPasteBox()">+ Insert Sample Student Rows</button>
+                  </div>
+                  <div><strong>Student Name</strong> | <strong>Mobile Number (Login ID)</strong> | <strong>Admission Number</strong> | <strong>Class Name</strong> | <strong>Status (Optional: ACTIVE)</strong></div>
+                  <div style="margin-top:6px; color:#7bffcf; font-size:0.75rem;">
+                    Example: <code>Aarav Kumar, 9876543210, ADM-2024-01, Class 10, ACTIVE</code>
+                  </div>
+                </div>
+
+                <div class="field" style="margin-top:14px;">
+                  <label style="font-weight:600;">Option 1: Upload CSV / Excel Export File</label>
+                  <input type="file" id="studentBulkFileInput" class="input" accept=".csv, .txt, .tsv" onchange="handleStudentBulkFileSelect(this)" />
+                </div>
+
+                <div class="field" style="margin-top:14px;">
+                  <label style="font-weight:600;">Option 2: Paste Rows from Excel / Google Sheets / CSV</label>
+                  <textarea id="studentBulkPasteText" class="textarea" rows="8" placeholder="Student Name, Mobile Number, Admission Number, Class Name, Status\nAarav Patel, 9876543210, ADM-01, Class 10, ACTIVE\nDiya Sen, 9876543211, ADM-02, Class 10, ACTIVE"></textarea>
+                </div>
+
+                <div class="field" style="margin-top:14px;">
+                  <label style="font-weight:600;">Default Class for rows without class specified:</label>
+                  <input type="text" id="studentBulkDefaultClass" class="input" value="Class 10" placeholder="e.g. Class 10" />
+                </div>
+              </div>
+              <div class="modal-footer" style="display:flex; justify-content:space-between; align-items:center;">
+                <button type="button" class="btn btn-secondary" onclick="downloadStudentTemplate()">📄 Download CSV Template</button>
+                <div class="row">
+                  <button type="button" class="btn btn-secondary" onclick="closeStudentBulkModal()">Cancel</button>
+                  <button type="button" id="btnRunStudentBulkUpload" class="btn btn-primary" style="background:#5ec8ff; color:#07111f; font-weight:bold;" onclick="executeStudentBulkImport()">🚀 Process & Upload Students</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+        modal.style.display = 'block';
+      }
+
+      function closeStudentBulkModal() {
+        const modal = document.getElementById('studentBulkModal');
+        if (modal) modal.style.display = 'none';
+      }
+
+      function loadSampleStudentsIntoPasteBox() {
+        const sample = `Student Name, Mobile Number, Admission Number, Class Name, Status
+Aarav Sharma, 9876543210, ADM-101, Class 10, ACTIVE
+Diya Patel, 9876543211, ADM-102, Class 10, ACTIVE
+Rohan Verma, 9876543212, ADM-103, Class 11, ACTIVE
+Ananya Gupta, 9876543213, ADM-104, Class 11, ACTIVE
+Kabir Mehta, 9876543214, ADM-105, Class 12, ACTIVE`;
+        const ta = document.getElementById('studentBulkPasteText');
+        if (ta) ta.value = sample;
+      }
+
+      function handleStudentBulkFileSelect(input) {
+        if (!input.files || !input.files[0]) return;
+        const file = input.files[0];
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          const content = e.target.result;
+          const ta = document.getElementById('studentBulkPasteText');
+          if (ta) ta.value = content;
+        };
+        reader.readAsText(file);
+      }
+
+      async function executeStudentBulkImport() {
+        const ta = document.getElementById('studentBulkPasteText');
+        const rawText = (ta ? ta.value : '').trim();
+        const defaultClass = (document.getElementById('studentBulkDefaultClass') ? document.getElementById('studentBulkDefaultClass').value.trim() : '') || 'Class 10';
+
+        if (!rawText) {
+          alert('⚠️ Please paste student rows or choose a CSV file first.');
+          return;
+        }
+
+        const lines = rawText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+        if (!lines.length) {
+          alert('⚠️ No valid lines detected in the text.');
+          return;
+        }
+
+        const btn = document.getElementById('btnRunStudentBulkUpload');
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = '⏳ Uploading Students...';
+        }
+
+        const parsedStudents = [];
+        lines.forEach((line, idx) => {
+          let parts = line.includes('\t') ? line.split('\t') : (line.includes('|') ? line.split('|') : parseCsvLine(line));
+          parts = parts.map(p => (p || '').trim().replace(/^["']|["']$/g, ''));
+
+          if (parts.length >= 2) {
+            const firstCol = parts[0].toLowerCase();
+            if (firstCol.includes('student name') || firstCol.includes('name') && parts[1].toLowerCase().includes('mobile')) {
+              // Header row, skip
+              return;
+            }
+
+            const name = parts[0];
+            const mobile = parts[1].replace(/\D/g, '');
+            const admissionNumber = parts[2] || '';
+            const className = parts[3] || defaultClass;
+            const status = (parts[4] || 'ACTIVE').toUpperCase();
+
+            if (name && mobile) {
+              parsedStudents.push({
+                studentName: name,
+                mobileNumber: mobile,
+                admissionNumber: admissionNumber,
+                className: className,
+                status: status === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE'
+              });
+            }
+          }
+        });
+
+        if (!parsedStudents.length) {
+          if (btn) { btn.disabled = false; btn.textContent = '🚀 Process & Upload Students'; }
+          alert('⚠️ Could not extract valid student records. Ensure each line has at least Student Name and Mobile Number.');
+          return;
+        }
+
+        try {
+          const res = await callAdmin('bulkSaveStudents', {
+            token: adminState.token,
+            students: parsedStudents
+          });
+
+          closeStudentBulkModal();
+          alert(`✅ Successfully imported / updated ${parsedStudents.length} students in Google Sheets!`);
+          await hydrateAdmin();
+        } catch (err) {
+          alert('❌ Failed to upload students: ' + (err.message || String(err)));
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = '🚀 Process & Upload Students';
+          }
+        }
       }
 
       async function downloadAnalyticsCsv() {
