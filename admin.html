@@ -1,11 +1,20 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Exam Management Admin</title>
+    <title>Exam Management Admin - High Speed & Advanced Analytics</title>
     <link rel="stylesheet" href="./styles.css" />
     <script src="./config.js"></script>
+    <style>
+      .rank-badge-1 { background: linear-gradient(135deg, #ffd700, #ffae00); color: #2a1b00; font-weight: bold; border-radius: 6px; padding: 3px 8px; font-size: 0.8rem; box-shadow: 0 2px 10px rgba(255, 215, 0, 0.4); }
+      .rank-badge-2 { background: linear-gradient(135deg, #e0e0e0, #a0a0a0); color: #1a1a1a; font-weight: bold; border-radius: 6px; padding: 3px 8px; font-size: 0.8rem; box-shadow: 0 2px 10px rgba(200, 200, 200, 0.3); }
+      .rank-badge-3 { background: linear-gradient(135deg, #cd7f32, #a0522d); color: #ffffff; font-weight: bold; border-radius: 6px; padding: 3px 8px; font-size: 0.8rem; box-shadow: 0 2px 10px rgba(205, 127, 50, 0.3); }
+      .podium-card { background: rgba(145, 179, 255, 0.06); border: 1px solid rgba(145, 179, 255, 0.16); border-radius: 14px; padding: 16px; position: relative; overflow: hidden; }
+      .podium-card.gold { border-color: rgba(255, 215, 0, 0.4); background: rgba(255, 215, 0, 0.05); }
+      .podium-card.silver { border-color: rgba(220, 220, 220, 0.35); background: rgba(220, 220, 220, 0.04); }
+      .podium-card.bronze { border-color: rgba(205, 127, 50, 0.35); background: rgba(205, 127, 50, 0.04); }
+    </style>
   </head>
   <body>
     <div id="adminApp"></div>
@@ -26,19 +35,17 @@
         exams: [],
         classes: [],
         error: '',
-        editingStudent: null,
-        editingClass: null,
-        editingExam: null
+        selectedClassFilter: ''
       };
 
       const EXAM_MODE_OPTIONS = [
-        { value: 'PHYSICAL_PAPER', label: 'Physical Paper / Answer Entry' },
-        { value: 'FULL_ONLINE_EXAM', label: 'Full Online Exam' }
+        { value: 'FULL_ONLINE_EXAM', label: 'Full Online Exam (On-screen questions & timer)' },
+        { value: 'PHYSICAL_PAPER', label: 'Physical Paper / Answer Sheet Entry' }
       ];
 
       const RESULT_MODE_OPTIONS = [
         { value: 'IMMEDIATE', label: 'Show result immediately after submission' },
-        { value: 'HIDDEN_UNTIL_PUBLISHED', label: 'Hide result until admin publishes it' }
+        { value: 'HIDDEN_UNTIL_PUBLISHED', label: 'Hide result until teacher publishes it' }
       ];
 
       const EXAM_STATUS_OPTIONS = ['DRAFT', 'PUBLISHED', 'ACTIVE', 'ENDED', 'ARCHIVED'];
@@ -54,14 +61,8 @@
         setAdminState({ loading: true, error: '' });
         return fetch(apiBaseUrl, {
           method: 'POST',
-          mode: 'cors',
-          headers: {
-            'Content-Type': 'text/plain;charset=utf-8'
-          },
-          body: JSON.stringify({
-            action: action,
-            ...(payload || {})
-          })
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: action, ...(payload || {}) })
         }).then((response) => response.json())
           .then((result) => {
             adminState.loading = false;
@@ -85,7 +86,7 @@
           <div class="app-shell">
             ${renderAdminTopbar()}
             ${adminState.error ? `<div class="panel" style="border-color: rgba(255,113,113,.35); margin-bottom: 16px;"><div class="pill-danger">${escapeHtml(adminState.error)}</div></div>` : ''}
-            ${adminState.loading ? `<div class="loading">Loading...</div>` : ''}
+            ${adminState.loading ? `<div class="loading">Loading, please wait...</div>` : ''}
             ${!adminState.token ? renderAdminLogin() : renderAdminWorkspace()}
           </div>
         `;
@@ -95,14 +96,14 @@
         return `
           <div class="topbar">
             <div class="brand">
-              <div class="brand-mark"></div>
+              <div class="brand-mark">EMS</div>
               <div>
                 <h1>${escapeHtml(BOOTSTRAP.appName)}</h1>
-                <p>Admin Portal</p>
+                <p>Teacher & Admin Control Center</p>
               </div>
             </div>
             <div class="row">
-              <button class="btn btn-secondary" onclick="location.href='index.html'">Open Student</button>
+              <button class="btn btn-secondary" onclick="location.href='student.html'">Student Portal</button>
               ${adminState.token ? `<button class="btn btn-danger" onclick="logoutAdmin()">Logout</button>` : ''}
             </div>
           </div>
@@ -113,16 +114,16 @@
         return `
           <div class="hero hero-grid">
             <div class="stack">
-              <span class="badge">Secure internal administration</span>
-              <h2 style="margin:10px 0 8px; font-size:clamp(2rem, 4vw, 3.5rem); line-height:1.05;">Manage students, exams, assignments, analytics, and attempts.</h2>
-              <p class="muted">The initial admin password is stored server-side in Script Properties and never exposed in frontend code.</p>
+              <span class="badge">Teacher & Administration Portal</span>
+              <h2 style="margin:10px 0 8px; font-size:clamp(2rem, 4vw, 3.5rem); line-height:1.05;">Admin Portal Login</h2>
+              <p class="muted">Default initial password is: <strong>Admin@1</strong></p>
             </div>
             <div class="panel login-card">
               <div class="stack">
-                <h3 style="margin:0;">Admin Login</h3>
+                <h3 style="margin:0;">Sign In</h3>
                 <div class="field">
-                  <label>Password</label>
-                  <input id="adminPassword" class="input" type="password" placeholder="Enter admin password" />
+                  <label>Admin Password</label>
+                  <input id="adminPassword" class="input" type="password" placeholder="Enter password" onkeypress="if(event.key==='Enter') loginAdmin()" />
                 </div>
                 <button class="btn btn-primary" onclick="loginAdmin()">Login</button>
               </div>
@@ -135,9 +136,8 @@
         return `
           <div class="hero hero-grid">
             <div class="stack">
-              <span class="badge">Responsive admin dashboard</span>
-              <h2 style="margin:10px 0 8px; font-size:clamp(1.8rem, 3.4vw, 3rem);">Overview, student master, exam setup, and analytics.</h2>
-              <p class="muted">The layout stays desktop-efficient while collapsing cleanly for tablets and smaller screens.</p>
+              <span class="badge">Exam Management & School Analytics</span>
+              <h2 style="margin:10px 0 8px; font-size:clamp(1.8rem, 3.4vw, 3rem);">Dashboard & Analytics</h2>
             </div>
             <div class="grid cards-2">
               <div class="card kpi"><span class="muted">Active Students</span><strong>${adminState.dashboard ? adminState.dashboard.stats.totalStudents : 0}</strong></div>
@@ -150,8 +150,8 @@
                 ${renderNavButton('overview', 'Overview')}
                 ${renderNavButton('students', 'Students')}
                 ${renderNavButton('classes', 'Classes')}
-                ${renderNavButton('exams', 'Exams')}
-                ${renderNavButton('analytics', 'Analytics')}
+                ${renderNavButton('exams', 'Exams & Scheduling')}
+                ${renderNavButton('analytics', 'Advanced Analytics')}
               </div>
             </div>
             <div class="stack">
@@ -185,9 +185,9 @@
             </div>
             <div class="row">
               <button class="btn btn-primary" onclick="openStudentDrawer()">Add Student</button>
-              <button class="btn btn-secondary" onclick="openClassDrawer()">Add Class / Section</button>
-              <button class="btn btn-secondary" onclick="openExamDrawer()">Create Exam</button>
-              <button class="btn btn-secondary" onclick="downloadStudentTemplate()">Download Student Template</button>
+              <button class="btn btn-secondary" onclick="openClassDrawer()">Add Class</button>
+              <button class="btn btn-secondary" onclick="openExamDrawer()">Create & Schedule Exam</button>
+              <button class="btn btn-secondary" onclick="downloadStudentTemplate()">Download Student Template CSV</button>
             </div>
           </div>
         `;
@@ -197,7 +197,7 @@
         return `
           <div class="panel">
             <div class="toolbar" style="margin-bottom:16px;">
-              <h3 style="margin:0;">Student Master</h3>
+              <h3 style="margin:0;">Student Master Directory</h3>
               <div class="row">
                 <button class="btn btn-primary" onclick="openStudentDrawer()">Add Student</button>
                 <button class="btn btn-secondary" onclick="downloadStudentTemplate()">Template CSV</button>
@@ -207,11 +207,10 @@
               <table>
                 <thead>
                   <tr>
-                    <th>Name</th>
-                    <th>Mobile</th>
-                    <th>Admission</th>
+                    <th>Student Name</th>
+                    <th>Mobile (Login ID)</th>
+                    <th>Admission #</th>
                     <th>Class</th>
-                    <th>Section</th>
                     <th>Status</th>
                     <th>Action</th>
                   </tr>
@@ -219,12 +218,11 @@
                 <tbody>
                   ${(adminState.students || []).map((student) => `
                     <tr>
-                      <td>${escapeHtml(student.studentName)}</td>
+                      <td><strong>${escapeHtml(student.studentName)}</strong></td>
                       <td>${escapeHtml(student.mobileNumber)}</td>
                       <td>${escapeHtml(student.admissionNumber)}</td>
                       <td>${escapeHtml(student.className)}</td>
-                      <td>${escapeHtml(student.sectionName)}</td>
-                      <td>${escapeHtml(student.status)}</td>
+                      <td><span class="badge">${escapeHtml(student.status)}</span></td>
                       <td><button class="btn btn-secondary" onclick="openStudentDrawerById('${escapeJs(student.studentId)}')">Edit</button></td>
                     </tr>
                   `).join('')}
@@ -239,28 +237,31 @@
         return `
           <div class="panel">
             <div class="toolbar" style="margin-bottom:16px;">
-              <h3 style="margin:0;">Classes and Sections</h3>
-              <button class="btn btn-primary" onclick="openClassDrawer()">Add Class / Section</button>
+              <h3 style="margin:0;">Classes & Grades</h3>
+              <button class="btn btn-primary" onclick="openClassDrawer()">Add Class</button>
             </div>
             <div class="table-wrap">
               <table>
                 <thead>
                   <tr>
-                    <th>Class</th>
-                    <th>Section</th>
+                    <th>Class Name</th>
+                    <th>Enrolled Students</th>
                     <th>Status</th>
                     <th>Action</th>
                   </tr>
                 </thead>
                 <tbody>
-                  ${(adminState.classes || []).map((item) => `
-                    <tr>
-                      <td>${escapeHtml(item.className)}</td>
-                      <td>${escapeHtml(item.sectionName)}</td>
-                      <td>${escapeHtml(item.status)}</td>
-                      <td><button class="btn btn-secondary" onclick="openClassDrawerById('${escapeJs(item.classSectionId)}')">Edit</button></td>
-                    </tr>
-                  `).join('')}
+                  ${(adminState.classes || []).map((item) => {
+                    const count = (adminState.students || []).filter(s => String(s.className) === String(item.className)).length;
+                    return `
+                      <tr>
+                        <td><strong>${escapeHtml(item.className)}</strong></td>
+                        <td>${count} students</td>
+                        <td><span class="badge">${escapeHtml(item.status)}</span></td>
+                        <td><button class="btn btn-secondary" onclick="openClassDrawerById('${escapeJs(item.classSectionId)}')">Edit</button></td>
+                      </tr>
+                    `;
+                  }).join('')}
                 </tbody>
               </table>
             </div>
@@ -272,22 +273,27 @@
         return `
           <div class="panel">
             <div class="toolbar" style="margin-bottom:16px;">
-              <h3 style="margin:0;">Exam Management</h3>
-              <button class="btn btn-primary" onclick="openExamDrawer()">Create Exam</button>
+              <h3 style="margin:0;">Exam Management & Live Window Scheduling</h3>
+              <button class="btn btn-primary" onclick="openExamDrawer()">Create & Schedule Exam</button>
             </div>
             <div class="list">
               ${(adminState.exams || []).map((exam) => `
                 <div class="exam-card">
                   <div class="stack">
                     <div class="row">
-                      <strong>${escapeHtml(exam.examName)}</strong>
+                      <strong style="font-size:1.1rem;">${escapeHtml(exam.examName)}</strong>
                       <span class="badge">${escapeHtml(exam.status)}</span>
                       <span class="badge">${escapeHtml(exam.mode)}</span>
                     </div>
-                    <div class="muted">Date: ${escapeHtml(exam.examDate)} - Duration: ${escapeHtml(exam.durationMinutes)} minutes</div>
+                    <div class="muted">
+                      📅 Date: ${escapeHtml(exam.examDate)} · ⏱️ Duration: ${escapeHtml(exam.durationMinutes)} min 
+                      ${exam.availabilityStart ? `· 🟢 Live From: ${new Date(exam.availabilityStart).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}` : ''}
+                      ${exam.availabilityEnd ? `· 🛑 Entry Cutoff: ${new Date(exam.availabilityEnd).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}` : ''}
+                      · 👥 Assigned: ${escapeHtml(exam.assignedStudentCount || 0)} students
+                    </div>
                   </div>
                   <div class="row">
-                    <button class="btn btn-secondary" onclick="openExamDrawerById('${escapeJs(exam.examId)}')">Edit</button>
+                    <button class="btn btn-secondary" onclick="openExamDrawerById('${escapeJs(exam.examId)}')">Edit & Blueprint</button>
                     <button class="btn btn-secondary" onclick="setExamStatus('${exam.examId}', 'PUBLISHED')">Publish</button>
                     <button class="btn btn-secondary" onclick="duplicateExam('${exam.examId}')">Duplicate</button>
                     <button class="btn btn-danger" onclick="removeExam('${exam.examId}')">Delete</button>
@@ -300,57 +306,138 @@
       }
 
       function renderAnalytics() {
-        const summary = adminState.analytics ? adminState.analytics.summary : {};
+        const data = adminState.analytics || { summary: {}, schoolReport: {}, classWiseReports: [], attempts: [] };
+        const summary = data.summary || {};
+        const school = data.schoolReport || {};
+        const classReports = data.classWiseReports || [];
+        const top3 = summary.top3Rankers || [];
+
         return `
-          <div class="grid cards-4">
-            <div class="card kpi"><span class="muted">Assigned</span><strong>${summary.totalAssignedStudents || 0}</strong></div>
-            <div class="card kpi"><span class="muted">Started</span><strong>${summary.startedStudents || 0}</strong></div>
-            <div class="card kpi"><span class="muted">Submitted</span><strong>${summary.submittedStudents || 0}</strong></div>
-            <div class="card kpi"><span class="muted">Average</span><strong>${Number(summary.averageScore || 0).toFixed(2)}</strong></div>
+          <!-- School-Wide High Level Metrics -->
+          <div class="hero hero-grid">
+            <div class="stack">
+              <span class="badge">School-Wide Exam Performance</span>
+              <h2 style="margin:8px 0 0;">Analytics & Batch Insights</h2>
+              <p class="muted">Class averages, whole school overview, and top ranker highlights.</p>
+            </div>
+            <div class="grid cards-2">
+              <div class="card kpi"><span class="muted">Whole School Average</span><strong>${Number(summary.averageScore || 0).toFixed(2)}</strong></div>
+              <div class="card kpi"><span class="muted">Total Submissions</span><strong>${summary.submittedStudents || 0} / ${summary.totalAssignedStudents || 0}</strong></div>
+            </div>
           </div>
+
+          <!-- Top 3 Best Rankers Showcase -->
+          <div class="panel" style="border-color: rgba(255, 215, 0, 0.3);">
+            <h3 style="margin-top:0; color:#ffd700;">🏆 Top 3 Rankers (Best Performers)</h3>
+            <div class="grid cards-3">
+              ${top3.length ? top3.map((ranker, i) => `
+                <div class="podium-card ${i === 0 ? 'gold' : i === 1 ? 'silver' : 'bronze'}">
+                  <div class="stack">
+                    <div class="row">
+                      <span class="rank-badge-${ranker.rank}">${ranker.topRankBadge}</span>
+                      <strong style="font-size:1.15rem; color:#fff;">${Number(ranker.marks || 0).toFixed(2)} pts</strong>
+                    </div>
+                    <strong style="font-size:1.1rem;">${escapeHtml(ranker.studentName)}</strong>
+                    <span class="muted">Class: ${escapeHtml(ranker.className)} · Time: ${escapeHtml(formatSeconds(ranker.timeTakenSeconds))}</span>
+                  </div>
+                </div>
+              `).join('') : '<div class="empty">No ranked submissions yet. Once students submit, top 3 rankers will be highlighted here.</div>'}
+            </div>
+          </div>
+
+          <!-- Class-Wise Performance Report Table -->
           <div class="panel">
             <div class="toolbar" style="margin-bottom:16px;">
-              <h3 style="margin:0;">Analytics Filters</h3>
+              <h3 style="margin:0;">📊 Class-Wise Performance Report</h3>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Class Name</th>
+                    <th>Enrolled</th>
+                    <th>Attempts</th>
+                    <th>Submissions</th>
+                    <th>Class Average</th>
+                    <th>Highest Score</th>
+                    <th>Lowest Score</th>
+                    <th>Class Topper</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${classReports.length ? classReports.map((c) => `
+                    <tr>
+                      <td><strong>${escapeHtml(c.className)}</strong></td>
+                      <td>${c.totalEnrolled}</td>
+                      <td>${c.totalAttempts}</td>
+                      <td>${c.submitted}</td>
+                      <td><strong style="color:var(--accent);">${Number(c.averageScore || 0).toFixed(2)}</strong></td>
+                      <td><span class="pill-success">${Number(c.highestScore || 0).toFixed(2)}</span></td>
+                      <td><span class="pill-danger">${Number(c.lowestScore || 0).toFixed(2)}</span></td>
+                      <td><strong>${escapeHtml(c.topStudent)}</strong></td>
+                    </tr>
+                  `).join('') : '<tr><td colspan="8" class="empty">No class data found.</td></tr>'}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Individual Attempts Master Log with Filter & Excel CSV Export -->
+          <div class="panel">
+            <div class="toolbar" style="margin-bottom:16px;">
+              <h3 style="margin:0;">📋 Student Submissions & Rankings</h3>
               <div class="row">
-                <select id="analyticsExamId" class="select" style="min-width:220px;">
+                <select id="analyticsExamId" class="select" style="min-width:180px;">
                   <option value="">All Exams</option>
                   ${(adminState.exams || []).map((exam) => `<option value="${escapeAttribute(exam.examId)}">${escapeHtml(exam.examName)}</option>`).join('')}
                 </select>
-                <button class="btn btn-primary" onclick="loadAnalytics()">Apply</button>
-                <button class="btn btn-secondary" onclick="downloadAnalyticsCsv()">Export CSV</button>
+                <select id="analyticsClassName" class="select" style="min-width:140px;">
+                  <option value="">All Classes</option>
+                  ${(adminState.classes || []).map((c) => `<option value="${escapeAttribute(c.className)}">${escapeHtml(c.className)}</option>`).join('')}
+                </select>
+                <button class="btn btn-primary" onclick="loadAnalytics()">Filter</button>
+                <button class="btn btn-secondary" onclick="downloadAnalyticsCsv()">Export Excel CSV (with Top 3 Tagged)</button>
               </div>
             </div>
             <div class="table-wrap">
               <table>
                 <thead>
                   <tr>
-                    <th>Attempt ID</th>
-                    <th>Student</th>
-                    <th>Status</th>
-                    <th>Started</th>
-                    <th>Submitted</th>
+                    <th>Rank</th>
+                    <th>Student Name</th>
+                    <th>Class</th>
                     <th>Score</th>
+                    <th>Status</th>
+                    <th>Submitted At</th>
+                    <th>Time Taken</th>
                   </tr>
                 </thead>
                 <tbody>
-                  ${adminState.analytics && adminState.analytics.attempts.length ? adminState.analytics.attempts.map((attempt) => {
-                    const score = parseJson(attempt.scoreJson, {});
-                    return `
-                      <tr>
-                        <td>${escapeHtml(attempt.attemptId)}</td>
-                        <td>${escapeHtml(attempt.studentNameSnapshot)}</td>
-                        <td>${escapeHtml(attempt.status)}</td>
-                        <td>${escapeHtml(attempt.startedAt)}</td>
-                        <td>${escapeHtml(attempt.submittedAt)}</td>
-                        <td>${Number(score.totalMarksObtained || 0).toFixed(2)}</td>
-                      </tr>
-                    `;
-                  }).join('') : '<tr><td colspan="6">No analytics yet.</td></tr>'}
+                  ${data.attempts && data.attempts.length ? data.attempts.map((attempt) => `
+                    <tr style="${attempt.isTop3 ? 'background: rgba(255, 215, 0, 0.05); font-weight: 500;' : ''}">
+                      <td>
+                        ${attempt.isTop3 ? `<span class="rank-badge-${attempt.rank}">${attempt.topRankBadge}</span>` : `#${attempt.rank}`}
+                      </td>
+                      <td><strong>${escapeHtml(attempt.studentName)}</strong></td>
+                      <td>${escapeHtml(attempt.className)}</td>
+                      <td><strong style="font-size:1.05rem;">${Number(attempt.marks || 0).toFixed(2)}</strong></td>
+                      <td><span class="badge">${escapeHtml(attempt.status)}</span></td>
+                      <td>${escapeHtml(attempt.submittedAt ? new Date(attempt.submittedAt).toLocaleTimeString() : 'In Progress')}</td>
+                      <td>${escapeHtml(formatSeconds(attempt.timeTakenSeconds))}</td>
+                    </tr>
+                  `).join('') : '<tr><td colspan="7" class="empty">No student attempts found.</td></tr>'}
                 </tbody>
               </table>
             </div>
           </div>
         `;
+      }
+
+      function formatSeconds(secs) {
+        if (!secs) return '—';
+        const m = Math.floor(secs / 60);
+        const s = secs % 60;
+        return `${m}m ${s}s`;
       }
 
       async function loginAdmin() {
@@ -391,7 +478,7 @@
       }
 
       function openStudentDrawerById(studentId) {
-        openStudentDrawer((adminState.students || []).find((item) => item.studentId === studentId));
+        openStudentDrawer((adminState.students || []).find((item) => String(item.studentId) === String(studentId)));
       }
 
       function openStudentDrawer(student) {
@@ -399,11 +486,10 @@
         openDrawer(`
           <div class="stack">
             <h3 style="margin:0;">${item.studentId ? 'Edit Student' : 'Add Student'}</h3>
-            ${renderField('Student Name', 'studentName', item.studentName || '')}
-            ${renderField('Mobile Number', 'mobileNumber', item.mobileNumber || '')}
-            ${renderField('Admission Number', 'admissionNumber', item.admissionNumber || '')}
-            ${renderField('Class', 'className', item.className || '')}
-            ${renderField('Section', 'sectionName', item.sectionName || '')}
+            ${renderField('Student Full Name', 'studentName', item.studentName || '')}
+            ${renderField('Mobile Number (Student Login ID)', 'mobileNumber', item.mobileNumber || '')}
+            ${renderField('Admission / Roll Number', 'admissionNumber', item.admissionNumber || '')}
+            ${renderField('Class (e.g. Class 10, Grade 12)', 'className', item.className || '')}
             ${renderSelectField('Status', 'status', item.status || 'ACTIVE', SIMPLE_STATUS_OPTIONS)}
             <div class="row">
               <button class="btn btn-primary" onclick="saveStudentForm('${escapeJs(item.studentId || '')}')">Save Student</button>
@@ -414,16 +500,15 @@
       }
 
       function openClassDrawerById(classSectionId) {
-        openClassDrawer((adminState.classes || []).find((item) => item.classSectionId === classSectionId));
+        openClassDrawer((adminState.classes || []).find((item) => String(item.classSectionId) === String(classSectionId)));
       }
 
       function openClassDrawer(item) {
         item = item || {};
         openDrawer(`
           <div class="stack">
-            <h3 style="margin:0;">${item.classSectionId ? 'Edit Class / Section' : 'Add Class / Section'}</h3>
-            ${renderField('Class', 'classSectionClassName', item.className || '')}
-            ${renderField('Section', 'classSectionSectionName', item.sectionName || '')}
+            <h3 style="margin:0;">${item.classSectionId ? 'Edit Class' : 'Add Class'}</h3>
+            ${renderField('Class Name (e.g. Class 10, Grade 12)', 'classSectionClassName', item.className || '')}
             ${renderSelectField('Status', 'classSectionStatus', item.status || 'ACTIVE', SIMPLE_STATUS_OPTIONS)}
             <div class="row">
               <button class="btn btn-primary" onclick="saveClassForm('${escapeJs(item.classSectionId || '')}')">Save</button>
@@ -441,27 +526,41 @@
       function openExamDrawer(exam) {
         exam = exam || {};
         const defaultQuestions = [
-          { questionNumber: 1, questionType: 'SINGLE_CORRECT', questionText: '', options: [{ id: 'A', label: 'Option A' }, { id: 'B', label: 'Option B' }, { id: 'C', label: 'Option C' }, { id: 'D', label: 'Option D' }], correctAnswer: 'A', fullMarks: 1, partialMarks: 0, wrongMarks: -0.25, groupCode: 'SC-1' }
+          { questionNumber: 1, questionType: 'SINGLE_CORRECT', questionText: 'Sample Question 1', options: [{ id: 'A', label: 'Option A' }, { id: 'B', label: 'Option B' }, { id: 'C', label: 'Option C' }, { id: 'D', label: 'Option D' }], correctAnswer: 'A', fullMarks: 4, partialMarks: 0, wrongMarks: -1 }
         ];
+
+        // Format dates for datetime-local
+        const startVal = exam.availabilityStart ? exam.availabilityStart.slice(0, 16) : '';
+        const endVal = exam.availabilityEnd ? exam.availabilityEnd.slice(0, 16) : '';
+
         openDrawer(`
           <div class="stack">
-            <h3 style="margin:0;">${exam.examId ? 'Edit Exam' : 'Create Exam'}</h3>
+            <h3 style="margin:0;">${exam.examId ? 'Edit Exam & Timing' : 'Create & Schedule Exam'}</h3>
             ${renderField('Exam Name', 'examName', exam.examName || '')}
-            ${renderField('Exam Date', 'examDate', exam.examDate || '', 'date')}
-            ${renderField('Duration Minutes', 'durationMinutes', exam.durationMinutes || 60, 'number')}
-            ${renderOptionField('Mode', 'mode', exam.mode || 'FULL_ONLINE_EXAM', EXAM_MODE_OPTIONS)}
-            ${renderField('Availability Start', 'availabilityStart', formatDateTimeLocal(exam.availabilityStart || ''), 'datetime-local')}
-            ${renderField('Availability End', 'availabilityEnd', formatDateTimeLocal(exam.availabilityEnd || ''), 'datetime-local')}
-            ${renderOptionField('Result Mode', 'resultMode', exam.resultMode || 'IMMEDIATE', RESULT_MODE_OPTIONS)}
-            ${renderSelectField('Status', 'examStatus', exam.status || 'DRAFT', EXAM_STATUS_OPTIONS)}
-            ${renderField('Assigned Student IDs (comma separated)', 'assignedStudentIds', (exam.assignedStudentIds || []).join(',') || '')}
+            ${renderField('Exam Date', 'examDate', exam.examDate || new Date().toISOString().split('T')[0], 'date')}
+            
+            <div class="panel" style="background:rgba(255,255,255,0.03); border:1px solid rgba(145,179,255,0.2);">
+              <h4 style="margin:0 0 8px; color:var(--accent);">🕒 Timed Window & Duration Settings</h4>
+              <p class="muted" style="margin:0 0 12px; font-size:0.85rem;">
+                Students can start anytime between <strong>Live Start</strong> and <strong>Entry Cutoff</strong>. Once started, each student gets their full allocated <strong>Duration</strong> from their exact start time.
+              </p>
+              ${renderField('Exam Live Start Time (e.g. 07:00 AM)', 'availabilityStart', startVal, 'datetime-local')}
+              ${renderField('Exam Entry Cutoff Time (e.g. 07:30 AM - entry closes after this)', 'availabilityEnd', endVal, 'datetime-local')}
+              ${renderField('Duration Per Student (Minutes, e.g. 90)', 'durationMinutes', exam.durationMinutes || 90, 'number')}
+            </div>
+
+            ${renderOptionField('Exam Mode', 'mode', exam.mode || 'FULL_ONLINE_EXAM', EXAM_MODE_OPTIONS)}
+            ${renderOptionField('Result Publication', 'resultMode', exam.resultMode || 'IMMEDIATE', RESULT_MODE_OPTIONS)}
+            ${renderSelectField('Exam Status', 'examStatus', exam.status || 'PUBLISHED', EXAM_STATUS_OPTIONS)}
+            ${renderField('Assigned Student IDs (Leave empty to automatically assign to ALL active students)', 'assignedStudentIds', (exam.assignedStudentIds || []).join(',') || '')}
+            
             <div class="field">
-              <label>Exam JSON Blueprint</label>
-              <textarea id="examBlueprint" class="textarea">${escapeHtml(JSON.stringify({
-                subjects: exam.subjects || [
+              <label>Exam Blueprint (Subjects, Patterns & Questions JSON)</label>
+              <textarea id="examBlueprint" class="textarea" style="min-height:180px;">${escapeHtml(JSON.stringify({
+                subjects: exam.subjects && exam.subjects.length ? exam.subjects : [
                   {
-                    subjectName: 'Subject 1',
-                    patterns: [{ questionType: 'SINGLE_CORRECT', numberOfQuestions: 1, fullMarks: 1, partialMarks: 0, wrongMarks: -0.25 }],
+                    subjectName: 'General',
+                    patterns: [{ questionType: 'SINGLE_CORRECT', numberOfQuestions: 1, fullMarks: 4, partialMarks: 0, wrongMarks: -1 }],
                     questions: defaultQuestions
                   }
                 ],
@@ -469,7 +568,7 @@
               }, null, 2))}</textarea>
             </div>
             <div class="row">
-              <button class="btn btn-primary" onclick="saveExamForm('${escapeJs(exam.examId || '')}')">Save Exam</button>
+              <button class="btn btn-primary" onclick="saveExamForm('${escapeJs(exam.examId || '')}')">Save & Schedule Exam</button>
               <button class="btn btn-secondary" onclick="closeDrawer()">Cancel</button>
             </div>
           </div>
@@ -508,7 +607,7 @@
       }
 
       async function saveStudentForm(studentId) {
-        const existing = (adminState.students || []).find((item) => item.studentId === studentId) || {};
+        const existing = (adminState.students || []).find((item) => String(item.studentId) === String(studentId)) || {};
         const payload = {
           studentId: existing.studentId || '',
           createdAt: existing.createdAt || '',
@@ -516,7 +615,6 @@
           mobileNumber: document.getElementById('mobileNumber').value.trim(),
           admissionNumber: document.getElementById('admissionNumber').value.trim(),
           className: document.getElementById('className').value.trim(),
-          sectionName: document.getElementById('sectionName').value.trim(),
           status: document.getElementById('status').value.trim() || 'ACTIVE'
         };
         await callAdmin('saveStudent', { token: adminState.token, data: payload });
@@ -525,12 +623,11 @@
       }
 
       async function saveClassForm(classSectionId) {
-        const existing = (adminState.classes || []).find((item) => item.classSectionId === classSectionId) || {};
+        const existing = (adminState.classes || []).find((item) => String(item.classSectionId) === String(classSectionId)) || {};
         const payload = {
           classSectionId: existing.classSectionId || '',
           createdAt: existing.createdAt || '',
           className: document.getElementById('classSectionClassName').value.trim(),
-          sectionName: document.getElementById('classSectionSectionName').value.trim(),
           status: document.getElementById('classSectionStatus').value.trim() || 'ACTIVE'
         };
         await callAdmin('saveClassSection', { token: adminState.token, data: payload });
@@ -539,25 +636,26 @@
       }
 
       async function saveExamForm(examId) {
-        const existing = examId ? await callAdmin('getExamDetail', { token: adminState.token, examId }) : {};
         const blueprint = parseJson(document.getElementById('examBlueprint').value, null);
         if (!blueprint) {
           setAdminState({ error: 'Exam blueprint JSON is invalid.' });
           return;
         }
+        let assigned = document.getElementById('assignedStudentIds').value.split(',').map((item) => item.trim()).filter(Boolean);
+        if (!assigned.length) {
+          assigned = (adminState.students || []).filter(s => s.status === 'ACTIVE').map(s => s.studentId);
+        }
         const payload = {
-          examId: existing.examId || '',
-          createdAt: existing.createdAt || '',
-          publishedAt: existing.publishedAt || '',
+          examId: examId || '',
           examName: document.getElementById('examName').value.trim(),
           examDate: document.getElementById('examDate').value,
-          durationMinutes: Number(document.getElementById('durationMinutes').value),
+          durationMinutes: Number(document.getElementById('durationMinutes').value) || 90,
+          availabilityStart: document.getElementById('availabilityStart').value ? new Date(document.getElementById('availabilityStart').value).toISOString() : '',
+          availabilityEnd: document.getElementById('availabilityEnd').value ? new Date(document.getElementById('availabilityEnd').value).toISOString() : '',
           mode: document.getElementById('mode').value.trim(),
-          availabilityStart: toIsoDateTime(document.getElementById('availabilityStart').value),
-          availabilityEnd: toIsoDateTime(document.getElementById('availabilityEnd').value),
           resultMode: document.getElementById('resultMode').value.trim(),
           status: document.getElementById('examStatus').value.trim(),
-          assignedStudentIds: document.getElementById('assignedStudentIds').value.split(',').map((item) => item.trim()).filter(Boolean),
+          assignedStudentIds: assigned,
           subjects: blueprint.subjects || [],
           rankingPriority: blueprint.rankingPriority || []
         };
@@ -577,13 +675,15 @@
       }
 
       async function removeExam(examId) {
+        if (!confirm('Are you sure you want to delete this exam?')) return;
         await callAdmin('deleteExam', { token: adminState.token, examId });
         await hydrateAdmin();
       }
 
       async function loadAnalytics() {
         const examId = document.getElementById('analyticsExamId') ? document.getElementById('analyticsExamId').value : '';
-        const analytics = await callAdmin('getAnalytics', { token: adminState.token, filters: { examId } });
+        const className = document.getElementById('analyticsClassName') ? document.getElementById('analyticsClassName').value : '';
+        const analytics = await callAdmin('getAnalytics', { token: adminState.token, filters: { examId, className } });
         setAdminState({ analytics });
       }
 
@@ -594,8 +694,9 @@
 
       async function downloadAnalyticsCsv() {
         const examId = document.getElementById('analyticsExamId') ? document.getElementById('analyticsExamId').value : '';
-        const csv = await callAdmin('exportCsv', { token: adminState.token, type: 'analytics', filters: { examId } });
-        downloadFile('analytics.csv', csv);
+        const className = document.getElementById('analyticsClassName') ? document.getElementById('analyticsClassName').value : '';
+        const csv = await callAdmin('exportCsv', { token: adminState.token, type: 'analytics', filters: { examId, className } });
+        downloadFile('exam-analytics-report.csv', csv);
       }
 
       function openDrawer(content) {
@@ -623,33 +724,13 @@
         try { return text ? JSON.parse(text) : fallback; } catch (e) { return fallback; }
       }
 
-      function formatDateTimeLocal(value) {
-        if (!value) return '';
-        const date = new Date(value);
-        if (Number.isNaN(date.getTime())) return '';
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        const hours = String(date.getHours()).padStart(2, '0');
-        const minutes = String(date.getMinutes()).padStart(2, '0');
-        return `${year}-${month}-${day}T${hours}:${minutes}`;
-      }
-
-      function toIsoDateTime(value) {
-        if (!value) return '';
-        const date = new Date(value);
-        return Number.isNaN(date.getTime()) ? '' : date.toISOString();
-      }
-
       function escapeJs(text) {
         return String(text === undefined || text === null ? '' : text).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
       }
 
       function getApiBaseUrl() {
         const url = window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl;
-        if (!url) {
-          throw new Error('API base URL is missing. Set window.APP_CONFIG.apiBaseUrl in config.js.');
-        }
+        if (!url) throw new Error('API base URL missing in config.js');
         return url;
       }
 
@@ -662,9 +743,7 @@
           .replace(/'/g, '&#39;');
       }
 
-      function escapeAttribute(text) {
-        return escapeHtml(text);
-      }
+      function escapeAttribute(text) { return escapeHtml(text); }
 
       renderAdmin();
       if (adminState.token) {
