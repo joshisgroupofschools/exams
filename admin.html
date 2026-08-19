@@ -954,9 +954,9 @@
             <div class="field" style="margin-bottom:14px;">
               <label style="font-weight:600; color:#7bffcf;">🎯 Upload Target Destination:</label>
               <select id="bulkTargetSelect" class="select" style="font-weight:bold;" onchange="onBulkTargetChange(this.value)">
-                <option value="WHOLE_SUBJECT" ${isWhole ? 'selected' : ''}>📁 Entire Subject (${escapeHtml(currentSubject.subjectName)}) - All Sub-Sections in one sheet</option>
+                <option value="WHOLE_SUBJECT" ${isWhole ? 'selected' : ''}>📁 Entire Subject (${escapeHtml(currentSubject.subjectName)}) - All 3 Sub-Sections</option>
                 ${subSections.map((sec, idx) => `
-                  <option value="${idx}" ${!isWhole && idx === adminState.activeSubSecIndex ? 'selected' : ''}>⚡ Sub-Section Tab: ${escapeHtml(sec.name)} (${sec.type})</option>
+                  <option value="${idx}" ${!isWhole && idx === adminState.activeSubSecIndex ? 'selected' : ''}>⚡ ${escapeHtml(sec.name)} (${sec.type})</option>
                 `).join('')}
               </select>
             </div>
@@ -966,13 +966,16 @@
               ${renderBulkFormatGuide(isWhole ? 'WHOLE_SUBJECT' : adminState.activeSubSecIndex, currentSubject)}
             </div>
 
-            <!-- Paste Input Area -->
+            <!-- Paste Input Area & Template Actions -->
             <div class="field" style="margin-bottom:14px;">
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                <label style="font-weight:600; font-size:0.85rem;">📋 Paste rows from Excel / Google Sheets / CSV (One line per question):</label>
-                <button type="button" class="btn btn-secondary" style="font-size:0.75rem; padding:3px 8px;" onclick="loadSampleQuestionsIntoPasteBox()">Insert Sample Data</button>
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:8px;">
+                <label style="font-weight:600; font-size:0.85rem;">📋 Paste rows (Excel / Sheets / CSV tab-separated):</label>
+                <div class="row" style="gap:6px;">
+                  <button type="button" class="btn btn-secondary" style="font-size:0.75rem; padding:4px 10px; background:rgba(94,200,255,0.15); color:#5ec8ff; border-color:#5ec8ff;" onclick="loadSampleQuestionsIntoPasteBox()">⚡ Insert 20 Sample Qs (10 Single + 5 Multi + 5 Int)</button>
+                  <button type="button" class="btn btn-secondary" style="font-size:0.75rem; padding:4px 10px;" onclick="downloadWholeSubjectCsvTemplate()">📥 Download 20-Q CSV Template</button>
+                </div>
               </div>
-              <textarea id="bulkPasteInput" class="textarea" style="min-height:160px; font-family:monospace; font-size:0.85rem;" placeholder="Paste rows here..."></textarea>
+              <textarea id="bulkPasteInput" class="textarea" style="min-height:170px; font-family:monospace; font-size:0.85rem;" placeholder="Paste rows here..."></textarea>
             </div>
 
             <!-- File Selector Input -->
@@ -1055,14 +1058,14 @@
         if (!textarea) return;
 
         if (isWhole) {
-          const subSections = (currentSubject && currentSubject.subSections && currentSubject.subSections.length) 
+          const subSections = (currentSubject && currentSubject.subSections && currentSubject.subSections.length >= 3) 
             ? currentSubject.subSections 
             : getStandardPatternSubSections();
             
           let lines = ['SubSection\tType\tQuestionText\tOptionA\tOptionB\tOptionC\tOptionD\tCorrectAnswer\tFullMarks\tWrongMarks\tImageUrl'];
           
           subSections.forEach(sec => {
-            const count = Number(sec.count) || 5;
+            const count = Number(sec.count) || (sec.type === 'SINGLE_CORRECT' ? 10 : 5);
             const isInt = sec.type === 'INTEGER';
             const isMulti = sec.type === 'MULTI_CORRECT';
             const fm = sec.fullMarks !== undefined ? sec.fullMarks : (isMulti ? 2 : 1);
@@ -1082,7 +1085,7 @@
         } else {
           const subSections = (currentSubject && currentSubject.subSections) || [];
           const sec = subSections[Number(selVal)] || subSections[0] || { name: 'Section 1', type: 'SINGLE_CORRECT', count: 10 };
-          const count = Number(sec.count) || 5;
+          const count = Number(sec.count) || (sec.type === 'SINGLE_CORRECT' ? 10 : 5);
           const isInt = sec.type === 'INTEGER';
           const isMulti = sec.type === 'MULTI_CORRECT';
           
@@ -1118,14 +1121,14 @@
 
       function downloadWholeSubjectCsvTemplate() {
         const currentSubject = adminState.editingExam.subjects[adminState.activeSubjectIndex];
-        const subSections = (currentSubject && currentSubject.subSections && currentSubject.subSections.length) 
+        const subSections = (currentSubject && currentSubject.subSections && currentSubject.subSections.length >= 3) 
           ? currentSubject.subSections 
           : getStandardPatternSubSections();
 
         let rows = ['"SubSection Name","Question Type","Question Text","Option A","Option B","Option C","Option D","Correct Answer","Full Marks","Wrong Marks","Optional Image URL"'];
         
         subSections.forEach(sec => {
-          const count = Number(sec.count) || 5;
+          const count = Number(sec.count) || (sec.type === 'SINGLE_CORRECT' ? 10 : 5);
           const isInt = sec.type === 'INTEGER';
           const isMulti = sec.type === 'MULTI_CORRECT';
           const fm = sec.fullMarks !== undefined ? sec.fullMarks : (isMulti ? 2 : 1);
@@ -1142,7 +1145,7 @@
           }
         });
 
-        const totalQCount = subSections.reduce((sum, s) => sum + (Number(s.count) || 0), 0);
+        const totalQCount = subSections.reduce((sum, s) => sum + (Number(s.count) || (s.type === 'SINGLE_CORRECT' ? 10 : 5)), 0);
         downloadFile(`${currentSubject.subjectName.replace(/\s+/g, '_')}_Template_${totalQCount}Qs.csv`, rows.join('\n'));
       }
 
@@ -2174,8 +2177,5 @@ Kabir Mehta, 9876543214, ADM-105, Class 12, ACTIVE`;
         }
       });
     </script>
-  </body>
-</html>
-
   </body>
 </html>
