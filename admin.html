@@ -261,8 +261,9 @@
               <h3 style="margin:0;">Teacher Quick Actions</h3>
               <button type="button" class="btn btn-secondary" onclick="refreshAdminDashboard()">Refresh Data</button>
             </div>
-            <div class="row">
+            <div class="row" style="flex-wrap:wrap; gap:8px;">
               <button type="button" class="btn btn-primary" onclick="openCreateExamWizard()">+ Create Test Paper & Questions</button>
+              <button type="button" class="btn btn-secondary" style="border-color:#5ec8ff; color:#5ec8ff; font-weight:600;" onclick="triggerRecalculateScores('ALL')">🔄 Recalculate All Scores</button>
               <button type="button" class="btn btn-secondary" onclick="switchAdminView('analytics')">View Heatmap Analytics</button>
               <button type="button" class="btn btn-secondary" onclick="openStudentDrawer()">Add Student</button>
               <button type="button" class="btn btn-secondary" onclick="openClassDrawer()">Add Class</button>
@@ -1997,17 +1998,20 @@
       }
 
       async function triggerRecalculateScores(examId) {
-        if (!examId) {
-          alert('Please select an exam first to recalculate marks.');
-          return;
+        let targetId = examId;
+        let examName = 'ALL exams';
+        if (targetId && targetId !== 'ALL') {
+          const exam = (adminState.exams || []).find(e => String(e.examId) === String(targetId));
+          examName = exam ? `"${exam.examName}"` : 'this exam';
+        } else {
+          targetId = 'ALL';
         }
-        const exam = (adminState.exams || []).find(e => String(e.examId) === String(examId));
-        const examName = exam ? exam.examName : 'this exam';
-        if (!confirm(`Are you sure you want to recalculate all student marks for "${examName}" against the latest answer keys and marking scheme?`)) return;
+
+        if (!confirm(`Are you sure you want to recalculate all student marks for ${examName} against the latest correction engine and answer keys? Student attempts and recorded responses will remain 100% intact.`)) return;
 
         try {
-          const res = await callAdmin('recalculateExamScores', { token: adminState.token, examId });
-          alert(`✅ Successfully recalculated marks for ${res.attemptsRecalculated || 0} submitted student attempts based on the latest answer key!`);
+          const res = await callAdmin('recalculateExamScores', { token: adminState.token, examId: targetId });
+          alert(`✅ Successfully recalculated marks for ${res.attemptsRecalculated || 0} student attempts!`);
           await hydrateAdmin();
         } catch (err) {
           alert('❌ Failed to recalculate marks: ' + (err.message || String(err)));
