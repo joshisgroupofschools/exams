@@ -55,6 +55,7 @@
         analytics: null,
         selectedAnalyticsExamId: '',
         students: [],
+        selectedStudentIds: new Set(),
         exams: [],
         classes: [],
         error: '',
@@ -299,13 +300,14 @@
                         📚 Subjects: <strong>${escapeHtml(subNames || 'General')}</strong> · ⏱️ Duration: <strong>${escapeHtml(exam.durationMinutes)} min</strong>
                       </div>
                     </div>
-                    <div class="row">
+                    <div class="row" style="flex-wrap:wrap; gap:8px;">
                       <button type="button" class="btn btn-primary" onclick="openExistingExamWizard('${escapeJs(exam.examId)}')">📝 Edit & Bulk Upload Questions (${totalQ})</button>
                       ${isLive ? `
                         <button type="button" class="btn" style="background:#ef4444; color:#fff;" onclick="setExamStatus('${exam.examId}', 'DRAFT')">⏸️ Turn Offline</button>
                       ` : `
                         <button type="button" class="btn" style="background:#10b981; color:#fff; font-weight:700;" onclick="setExamStatus('${exam.examId}', 'PUBLISHED')">⚡ GO LIVE NOW</button>
                       `}
+                      <button type="button" class="btn btn-secondary" style="border-color:#5ec8ff; color:#5ec8ff;" title="Recalculate marks of all submitted students if answer key was updated" onclick="triggerRecalculateScores('${escapeJs(exam.examId)}')">🔄 Recalculate Marks</button>
                       <button type="button" class="btn btn-secondary" onclick="openExamSettingsDrawer('${escapeJs(exam.examId)}')">⚙️ Class Settings</button>
                       <button type="button" class="btn btn-secondary" onclick="duplicateExam('${exam.examId}')">Duplicate</button>
                       <button type="button" class="btn btn-danger" onclick="removeExam('${exam.examId}')">Delete</button>
@@ -1421,7 +1423,7 @@
                 <h3 style="margin:0;">🎯 Exam Performance Analytics</h3>
                 <p class="muted" style="margin:4px 0 0; font-size:0.85rem;">Select an exam to instantly view rank-wise student performance with dynamic color heatmap.</p>
               </div>
-              <div class="row">
+              <div class="row" style="flex-wrap:wrap; gap:8px;">
                 <label style="font-size:0.85rem; font-weight:600;">Select Exam:</label>
                 <select id="analyticsExamSelect" class="select" style="min-width:240px; font-weight:bold;" onchange="onExamSelectChange(this.value)">
                   <option value="">-- Choose Exam --</option>
@@ -1431,6 +1433,7 @@
                     </option>
                   `).join('')}
                 </select>
+                <button type="button" class="btn btn-secondary" style="border-color:#5ec8ff; color:#5ec8ff;" title="Recalculate all submitted marks against latest answer key" onclick="triggerRecalculateScores(adminState.selectedAnalyticsExamId)">🔄 Recalculate Marks</button>
                 <button type="button" class="btn btn-secondary" onclick="downloadAnalyticsCsv()">Export Excel CSV</button>
               </div>
             </div>
@@ -1568,45 +1571,89 @@
           return String(s.className).toLowerCase() === filterCls.toLowerCase();
         });
 
+        const selectedCount = adminState.selectedStudentIds ? adminState.selectedStudentIds.size : 0;
+        const allFilteredSelected = filteredStudents.length > 0 && filteredStudents.every(s => adminState.selectedStudentIds && adminState.selectedStudentIds.has(String(s.studentId)));
+
         return `
           <div class="panel">
             <div class="toolbar" style="margin-bottom:16px; flex-wrap:wrap; gap:12px;">
               <div>
                 <h3 style="margin:0;">Student Master Directory (${(adminState.students || []).length} Enrolled)</h3>
-                <p class="muted" style="margin:4px 0 0; font-size:0.85rem;">Manage student credentials, login mobile numbers, and class enrollments.</p>
+                <p class="muted" style="margin:4px 0 0; font-size:0.85rem;">Manage student credentials, login mobile numbers, active/inactive statuses, and bulk deactivations.</p>
               </div>
               <div class="row" style="flex-wrap:wrap; gap:8px;">
                 <select class="select" style="min-width:160px; font-weight:bold;" onchange="adminState.studentFilterClass=this.value; renderAdmin();">
                   ${uniqueClasses.map(cls => `<option value="${escapeAttribute(cls)}" ${cls === filterCls ? 'selected' : ''}>${cls === 'ALL' ? '🌟 All Classes' : escapeHtml(cls)}</option>`).join('')}
                 </select>
                 <button type="button" class="btn btn-primary" onclick="openStudentDrawer()">+ Add Single Student</button>
-                <button type="button" class="btn btn-primary" style="background:#5ec8ff; color:#07111f; font-weight:bold;" onclick="openStudentBulkUploadModal()">📥 Bulk Upload Students (CSV / Excel)</button>
+                <button type="button" class="btn btn-primary" style="background:#5ec8ff; color:#07111f; font-weight:bold;" onclick="openStudentBulkUploadModal()">📥 Bulk Upload Students</button>
                 <button type="button" class="btn btn-secondary" onclick="downloadStudentTemplate()">📄 Template CSV</button>
               </div>
             </div>
+
+            <!-- Class Level Bulk Actions Toolbar -->
+            <div style="background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:8px; padding:10px 14px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+              <div style="font-size:0.85rem; color:#cbd5e1;">
+                <strong>⚡ Class Quick Actions:</strong> Apply status to ${filterCls === 'ALL' ? 'all ' + (adminState.students || []).length + ' students' : 'all students in ' + escapeHtml(filterCls)}
+              </div>
+              <div class="row" style="flex-wrap:wrap; gap:8px;">
+                <button type="button" class="btn btn-secondary" style="color:#ef4444; border-color:rgba(239,68,68,0.4); font-size:0.8rem; padding:4px 10px;" onclick="bulkSetClassStatus('${escapeJs(filterCls)}', 'INACTIVE')">🚫 Bulk Inactive (${filterCls === 'ALL' ? 'All' : escapeHtml(filterCls)})</button>
+                <button type="button" class="btn btn-secondary" style="color:#10b981; border-color:rgba(16,185,129,0.4); font-size:0.8rem; padding:4px 10px;" onclick="bulkSetClassStatus('${escapeJs(filterCls)}', 'ACTIVE')">✅ Bulk Active (${filterCls === 'ALL' ? 'All' : escapeHtml(filterCls)})</button>
+              </div>
+            </div>
+
+            <!-- Selection Floating Action Bar -->
+            ${selectedCount > 0 ? `
+              <div style="background:linear-gradient(135deg, rgba(14, 165, 233, 0.15), rgba(99, 102, 241, 0.15)); border:1px solid #38bdf8; border-radius:8px; padding:12px 16px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                <div>
+                  <strong style="color:#38bdf8; font-size:0.95rem;">🎯 ${selectedCount} Student${selectedCount > 1 ? 's' : ''} Selected</strong>
+                  <span class="muted" style="margin-left:8px; font-size:0.85rem;">Choose a bulk action to apply:</span>
+                </div>
+                <div class="row" style="flex-wrap:wrap; gap:8px;">
+                  <button type="button" class="btn" style="background:#ef4444; color:#fff; font-weight:700; padding:6px 14px;" onclick="bulkSetStudentStatus('INACTIVE')">🚫 Deactivate Selected (${selectedCount})</button>
+                  <button type="button" class="btn" style="background:#10b981; color:#fff; font-weight:700; padding:6px 14px;" onclick="bulkSetStudentStatus('ACTIVE')">✅ Activate Selected (${selectedCount})</button>
+                  <button type="button" class="btn btn-secondary" style="font-size:0.8rem; padding:6px 10px;" onclick="adminState.selectedStudentIds.clear(); renderAdmin();">✕ Deselect</button>
+                </div>
+              </div>
+            ` : ''}
+
             <div class="table-wrap">
               <table>
                 <thead>
                   <tr>
+                    <th style="width:40px; text-align:center;">
+                      <input type="checkbox" style="cursor:pointer; width:16px; height:16px;" ${allFilteredSelected ? 'checked' : ''} onchange="toggleSelectAllStudents(this.checked)" title="Select / Deselect all filtered students" />
+                    </th>
                     <th>Student Name</th>
                     <th>Mobile (Login ID)</th>
                     <th>Admission #</th>
                     <th>Class</th>
-                    <th>Status</th>
+                    <th>Status (Click to toggle)</th>
                     <th>Action</th>
                   </tr>
                 </thead>
                 <tbody>
-                  ${filteredStudents.length ? filteredStudents.map((student) => `
-                    <tr>
-                      <td><strong>${escapeHtml(student.studentName)}</strong></td>
-                      <td>${escapeHtml(student.mobileNumber)}</td>
-                      <td>${escapeHtml(student.admissionNumber)}</td>
-                      <td><span class="badge" style="background:rgba(94,200,255,0.15); color:#5ec8ff; font-weight:bold;">${escapeHtml(student.className)}</span></td>
-                      <td><span class="badge">${escapeHtml(student.status)}</span></td>
-                      <td><button type="button" class="btn btn-secondary" onclick="openStudentDrawerById('${escapeJs(student.studentId)}')">Edit</button></td>
-                    </tr>
-                  `).join('') : `<tr><td colspan="6" class="empty">No students found matching filter.</td></tr>`}
+                  ${filteredStudents.length ? filteredStudents.map((student) => {
+                    const isChecked = adminState.selectedStudentIds && adminState.selectedStudentIds.has(String(student.studentId));
+                    const isActive = String(student.status || 'ACTIVE').toUpperCase() === 'ACTIVE';
+                    return `
+                      <tr style="${isChecked ? 'background:rgba(56, 189, 248, 0.08);' : ''}">
+                        <td style="text-align:center;">
+                          <input type="checkbox" style="cursor:pointer; width:16px; height:16px;" ${isChecked ? 'checked' : ''} onchange="toggleSelectStudent('${escapeJs(student.studentId)}', this.checked)" />
+                        </td>
+                        <td><strong>${escapeHtml(student.studentName)}</strong></td>
+                        <td>${escapeHtml(student.mobileNumber)}</td>
+                        <td>${escapeHtml(student.admissionNumber || '—')}</td>
+                        <td><span class="badge" style="background:rgba(94,200,255,0.15); color:#5ec8ff; font-weight:bold;">${escapeHtml(student.className || 'Class 10')}</span></td>
+                        <td>
+                          <button type="button" class="badge" style="cursor:pointer; border:1px solid ${isActive ? '#10b981' : '#ef4444'}; background:${isActive ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)'}; color:${isActive ? '#10b981' : '#ef4444'}; font-weight:bold;" title="Click to toggle status" onclick="toggleSingleStudentStatus('${escapeJs(student.studentId)}', '${student.status || 'ACTIVE'}')">
+                            ${isActive ? '🟢 ACTIVE' : '🔴 INACTIVE'}
+                          </button>
+                        </td>
+                        <td><button type="button" class="btn btn-secondary" onclick="openStudentDrawerById('${escapeJs(student.studentId)}')">Edit</button></td>
+                      </tr>
+                    `;
+                  }).join('') : `<tr><td colspan="7" class="empty">No students found matching filter.</td></tr>`}
                 </tbody>
               </table>
             </div>
@@ -1947,6 +1994,107 @@
         if (!confirm('Are you sure you want to delete this exam?')) return;
         await callAdmin('deleteExam', { token: adminState.token, examId });
         await hydrateAdmin();
+      }
+
+      async function triggerRecalculateScores(examId) {
+        if (!examId) {
+          alert('Please select an exam first to recalculate marks.');
+          return;
+        }
+        const exam = (adminState.exams || []).find(e => String(e.examId) === String(examId));
+        const examName = exam ? exam.examName : 'this exam';
+        if (!confirm(`Are you sure you want to recalculate all student marks for "${examName}" against the latest answer keys and marking scheme?`)) return;
+
+        try {
+          const res = await callAdmin('recalculateExamScores', { token: adminState.token, examId });
+          alert(`✅ Successfully recalculated marks for ${res.attemptsRecalculated || 0} submitted student attempts based on the latest answer key!`);
+          await hydrateAdmin();
+        } catch (err) {
+          alert('❌ Failed to recalculate marks: ' + (err.message || String(err)));
+        }
+      }
+
+      function toggleSelectAllStudents(checked) {
+        if (!adminState.selectedStudentIds) adminState.selectedStudentIds = new Set();
+        const filterCls = adminState.studentFilterClass || 'ALL';
+        const filteredStudents = (adminState.students || []).filter(s => {
+          if (filterCls === 'ALL') return true;
+          return String(s.className).toLowerCase() === filterCls.toLowerCase();
+        });
+
+        if (checked) {
+          filteredStudents.forEach(s => adminState.selectedStudentIds.add(String(s.studentId)));
+        } else {
+          filteredStudents.forEach(s => adminState.selectedStudentIds.delete(String(s.studentId)));
+        }
+        renderAdmin();
+      }
+
+      function toggleSelectStudent(studentId, checked) {
+        if (!adminState.selectedStudentIds) adminState.selectedStudentIds = new Set();
+        if (checked) {
+          adminState.selectedStudentIds.add(String(studentId));
+        } else {
+          adminState.selectedStudentIds.delete(String(studentId));
+        }
+        renderAdmin();
+      }
+
+      async function toggleSingleStudentStatus(studentId, currentStatus) {
+        const nextStatus = String(currentStatus).toUpperCase() === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+        try {
+          await callAdmin('bulkUpdateStudentStatus', {
+            token: adminState.token,
+            studentIds: [studentId],
+            status: nextStatus
+          });
+          await hydrateAdmin();
+        } catch (err) {
+          alert('❌ Failed to update status: ' + (err.message || String(err)));
+        }
+      }
+
+      async function bulkSetStudentStatus(status) {
+        const count = adminState.selectedStudentIds ? adminState.selectedStudentIds.size : 0;
+        if (!count) {
+          alert('Please select at least one student.');
+          return;
+        }
+        const actionLabel = status === 'INACTIVE' ? 'DEACTIVATE' : 'ACTIVATE';
+        if (!confirm(`Are you sure you want to ${actionLabel} ${count} selected student(s)? Inactive students cannot log in or take exams.`)) return;
+
+        try {
+          const ids = Array.from(adminState.selectedStudentIds);
+          await callAdmin('bulkUpdateStudentStatus', {
+            token: adminState.token,
+            studentIds: ids,
+            status: status
+          });
+          adminState.selectedStudentIds.clear();
+          alert(`✅ Successfully updated ${count} student(s) to ${status}!`);
+          await hydrateAdmin();
+        } catch (err) {
+          alert('❌ Failed to bulk update student status: ' + (err.message || String(err)));
+        }
+      }
+
+      async function bulkSetClassStatus(className, status) {
+        const actionLabel = status === 'INACTIVE' ? 'DEACTIVATE' : 'ACTIVATE';
+        const targetDesc = className === 'ALL' ? 'ALL students in the school' : `all students in "${className}"`;
+        if (!confirm(`Are you sure you want to ${actionLabel} ${targetDesc}? Inactive students will be locked out from student portal logins.`)) return;
+
+        try {
+          const res = await callAdmin('bulkUpdateStudentsByClass', {
+            token: adminState.token,
+            className: className,
+            status: status
+          });
+          if (adminState.selectedStudentIds) adminState.selectedStudentIds.clear();
+          alert(`✅ Successfully updated ${res.count || 0} students in ${className} to ${status}!`);
+          await hydrateAdmin();
+        } catch (err) {
+          alert('❌ Failed to bulk update class status: ' + (err.message || String(err)));
+        }
       }
 
       async function downloadStudentTemplate() {
